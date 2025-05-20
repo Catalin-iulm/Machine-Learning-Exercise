@@ -1,407 +1,141 @@
-import streamlit as st
-import pandas as pd
 import numpy as np
-from sklearn.datasets import make_blobs
+import matplotlib.pyplot as plt
+from sklearn.datasets import make_blobs # Per generare un dataset di esempio
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans, DBSCAN
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
-import plotly.express as px
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score # Per le metriche di performance
 
-# --- Configurazione Pagina Streamlit ---
-st.set_page_config(layout="wide", page_title="Clustering Didattico: K-Means & DBSCAN", page_icon="🔬")
+# 1. Generazione di un dataset di esempio (o caricamento di uno reale)
+# Supponiamo di avere 3 variabili esplicative (features)
+n_samples = 300
+random_state = 42
+X, y = make_blobs(n_samples=n_samples, n_features=3, centers=4, random_state=random_state, cluster_std=1.0)
+# Per il clustering, ignoriamo 'y' che rappresenta le classi vere, ma 'make_blobs' le genera per coerenza
 
-st.title("🔬 Clustering Didattico: K-Means & DBSCAN")
-st.markdown("""
-Questa applicazione ti permette di **esplorare e capire** gli algoritmi di clustering K-Means e DBSCAN su dati simulati di clienti retail.
-Modifica i parametri, osserva i risultati e scopri come funzionano questi algoritmi!
-""")
+# 2. Preprocessing: Scaling delle feature
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-# --- SIDEBAR: Parametri e spiegazioni algoritmi ---
-with st.sidebar:
-    st.header("⚙️ Configurazione Esperimento")
+# 3. Determinazione del numero ottimale di cluster (metodo "Elbow Method")
+# Questo è un passo importante per determinare un buon 'K'
+inertia = []
+for i in range(1, 11): # Proviamo da 1 a 10 cluster
+    kmeans = KMeans(n_clusters=i, random_state=random_state, n_init='auto')
+    kmeans.fit(X_scaled)
+    inertia.append(kmeans.inertia_) # La somma delle distanze al quadrato dei punti dal loro centroide
 
-    st.subheader("1. Generazione Dati")
-    n_campioni = st.slider("Numero di clienti simulati", 500, 5000, 1000, step=100,
-                           help="Numero totale di dati generati per l'esperimento.")
-    livello_rumore = st.slider("Livello di rumore (%)", 0, 30, 5,
-                               help="Percentuale di dati generati con valori casuali/rumorosi.")
-    stato_casuale = st.slider("Seed casuale", 0, 100, 42,
-                              help="Cambia questo valore per ottenere una diversa generazione casuale dei dati.")
+plt.figure(figsize=(8, 5))
+plt.plot(range(1, 11), inertia, marker='o')
+plt.title('Elbow Method')
+plt.xlabel('Number of Clusters (K)')
+plt.ylabel('Inertia')
+plt.grid(True)
+# plt.show() # Non lo mostriamo subito per Streamlit, ma in Jupyter/Colab lo faresti
 
-    st.subheader("2. Selezione Algoritmo")
-    algoritmo = st.radio("Algoritmo di Clustering:",
-                         ["K-Means", "DBSCAN"],
-                         index=0)
+# Dal grafico, si cerca il "gomito" che indica il K ottimale. Supponiamo K=4 per il nostro esempio.
 
-    # Parametri algoritmi con tooltip
-    if algoritmo == "K-Means":
-        n_clusters = st.slider("Numero di cluster (K)", 2, 15, 6,
-                               help="Numero di gruppi che vuoi trovare nei dati.")
-        init_method = st.selectbox("Metodo di inizializzazione",
-                                   ["k-means++", "random"],
-                                   help="Come vengono scelti i centroidi iniziali.")
-        max_iter = st.slider("Max iterazioni", 100, 500, 300,
-                             help="Quante volte aggiornare i centroidi al massimo.")
-        show_steps = st.checkbox("Mostra passi K-Means", value=False,
-                                 help="Spiega i passi principali dell'algoritmo K-Means.")
-    else:
-        eps = st.slider("Epsilon (raggio di vicinato)", 0.1, 2.0, 0.5, step=0.05,
-                        help="Distanza massima per considerare due punti come vicini.")
-        min_samples = st.slider("Campioni minimi", 1, 50, 10,
-                                help="Numero minimo di punti per formare un cluster denso.")
-        metric = st.selectbox("Metrica di distanza",
-                              ["euclidean", "cosine", "manhattan"],
-                              help="Come si misura la distanza tra i punti.")
+# 4. Addestramento del modello K-Means con il K scelto
+n_clusters = 4 # Dal metodo del gomito
+kmeans_model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init='auto')
+kmeans_model.fit(X_scaled)
 
-    st.subheader("3. Visualizzazione")
-    dim_reduction = st.selectbox("Riduzione di dimensionalità",
-                                 ["PCA", "t-SNE", "Caratteristiche Originali"])
-    plot_engine = st.selectbox("Motore di plotting",
-                               ["Plotly", "Matplotlib"])
+# 5. Ottenere le assegnazioni dei cluster per ogni punto e i centroidi
+cluster_labels = kmeans_model.labels_
+centroids = kmeans_model.cluster_centers_
 
-    st.markdown("---")
-    st.header("📚 Spiegazione Algoritmo")
-    if algoritmo == "K-Means":
-        st.markdown("""
-        **K-Means** cerca di dividere i dati in *K* gruppi ("cluster") minimizzando la distanza tra i punti e il centroide del proprio gruppo.
-        - Ogni punto viene assegnato al centroide più vicino.
-        - I centroidi vengono aggiornati iterativamente.
-        - Il processo termina quando i centroidi non cambiano più o si raggiunge il numero massimo di iterazioni.
-        """)
-    else:
-        st.markdown("""
-        **DBSCAN** raggruppa i punti che sono vicini tra loro (densità) e identifica i punti "rumore".
-        - Un punto centrale ha almeno *min_samples* punti nel suo raggio *eps*.
-        - I cluster si formano collegando punti densi.
-        - I punti isolati sono considerati rumore.
-        """)
+# --- Simulazione delle prime 10 iterazioni (manualmente per l'esempio concettuale) ---
+# NB: Scikit-learn non espone direttamente i passaggi intermedi delle iterazioni K-Means.
+# Per mostrare i passaggi, dovremmo implementare una versione semplificata del K-Means da zero
+# o spiegare il concetto iterativo. Per questo esercizio, simuliamo il *concetto* delle iterazioni
+# mostrando come l'algoritmo *idealmente* raffinerebbe i cluster.
 
-# --- Generazione Dati ---
-@st.cache_data
-def genera_dati_retail(n_campioni, livello_rumore, stato_casuale):
-    np.random.seed(stato_casuale)
-    archetipi = {
-        "Giovani Professionisti Urbani": {
-            "eta": (28, 5), "reddito": (55000, 12000),
-            "visite_online_mensili": (18, 5), "dimensione_cestino_media": (45, 10),
-            "pct_acquisti_bio": (0.35, 0.1), "sensibilita_sconto": (0.6, 0.15),
-            "visite_negozio_mensili": (4, 2), "lealta_brand": (0.7, 0.1)
-        },
-        "Famiglie con Budget Limitato": {
-            "eta": (38, 6), "reddito": (45000, 8000),
-            "visite_online_mensili": (8, 3), "dimensione_cestino_media": (75, 15),
-            "pct_acquisti_bio": (0.15, 0.08), "sensibilita_sconto": (0.9, 0.05),
-            "visite_negozio_mensili": (12, 3), "lealta_brand": (0.4, 0.15)
-        },
-        "Acquirenti Premium": {
-            "eta": (45, 8), "reddito": (95000, 20000),
-            "visite_online_mensili": (12, 4), "dimensione_cestino_media": (120, 25),
-            "pct_acquisti_bio": (0.5, 0.15), "sensibilita_sconto": (0.3, 0.1),
-            "visite_negozio_mensili": (6, 2), "lealta_brand": (0.85, 0.08)
-        },
-        "Coppie in Pensione": {
-            "eta": (65, 5), "reddito": (40000, 10000),
-            "visite_online_mensili": (4, 2), "dimensione_cestino_media": (55, 12),
-            "pct_acquisti_bio": (0.25, 0.1), "sensibilita_sconto": (0.7, 0.1),
-            "visite_negozio_mensili": (8, 2), "lealta_brand": (0.6, 0.12)
-        },
-        "Appassionati di Salute": {
-            "eta": (35, 7), "reddito": (60000, 15000),
-            "visite_online_mensili": (15, 4), "dimensione_cestino_media": (65, 15),
-            "pct_acquisti_bio": (0.75, 0.1), "sensibilita_sconto": (0.5, 0.15),
-            "visite_negozio_mensili": (6, 2), "lealta_brand": (0.65, 0.12)
-        },
-        "Acquirenti di Convenienza": {
-            "eta": (32, 8), "reddito": (48000, 10000),
-            "visite_online_mensili": (25, 6), "dimensione_cestino_media": (30, 8),
-            "pct_acquisti_bio": (0.2, 0.1), "sensibilita_sconto": (0.8, 0.1),
-            "visite_negozio_mensili": (2, 1), "lealta_brand": (0.3, 0.15)
-        }
-    }
+print("\n--- Simulazione Concettuale dei Primi 10 Passaggi dell'Algoritmo K-Means ---")
+print("*(Nota: Scikit-learn non espone direttamente le iterazioni intermedie. Questo è un esempio concettuale per illustrare il processo.)*")
 
-    data = []
-    campioni_per_tipo = n_campioni // len(archetipi)
-    for nome_archetipo, params in archetipi.items():
-        n = campioni_per_tipo
-        eta = np.random.normal(params["eta"][0], params["eta"][1], n)
-        reddito = np.random.normal(params["reddito"][0], params["reddito"][1], n)
-        visite_online_mensili = np.random.poisson(params["visite_online_mensili"][0], n)
-        dimensione_cestino_media = np.abs(np.random.normal(params["dimensione_cestino_media"][0], params["dimensione_cestino_media"][1], n))
-        pct_acquisti_bio = np.clip(np.random.normal(params["pct_acquisti_bio"][0], params["pct_acquisti_bio"][1], n), 0, 1)
-        sensibilita_sconto = np.clip(np.random.normal(params["sensibilita_sconto"][0], params["sensibilita_sconto"][1], n), 0, 1)
-        visite_negozio_mensili = np.random.poisson(params["visite_negozio_mensili"][0], n)
-        lealta_brand = np.clip(np.random.normal(params["lealta_brand"][0], params["lealta_brand"][1], n), 0, 1)
+# Per simulare le iterazioni, useremo un K-Means semplificato o spiegheremo il concetto.
+# Per l'esercizio, possiamo spiegare cosa succede in ogni iterazione, mostrando immagini progressive.
+# In un'implementazione Streamlit, potremmo avere un "slider" che visualizza i risultati
+# dopo 'n' iterazioni se implementassimo il K-Means a basso livello.
 
-        maschera_rumore = np.random.random(n) < (livello_rumore/100)
-        if maschera_rumore.any():
-            fattore_rumore_singolo = 1 + np.random.normal(0, 0.5, size=maschera_rumore.sum())
-            eta[maschera_rumore] *= fattore_rumore_singolo
-            reddito[maschera_rumore] *= fattore_rumore_singolo
-            visite_online_mensili[maschera_rumore] = np.abs(visite_online_mensili[maschera_rumore] * fattore_rumore_singolo)
-            dimensione_cestino_media[maschera_rumore] = np.abs(dimensione_cestino_media[maschera_rumore] * fattore_rumore_singolo)
-            pct_acquisti_bio[maschera_rumore] = np.clip(pct_acquisti_bio[maschera_rumore] * fattore_rumore_singolo, 0, 1)
-            sensibilita_sconto[maschera_rumore] = np.clip(sensibilita_sconto[maschera_rumore] * fattore_rumore_singolo, 0, 1)
-            visite_negozio_mensili[maschera_rumore] = np.abs(visite_negozio_mensili[maschera_rumore] * fattore_rumore_singolo)
-            lealta_brand[maschera_rumore] = np.clip(lealta_brand[maschera_rumore] * fattore_rumore_singolo, 0, 1)
+# Ecco il concetto dei passaggi che spiegheresti:
+# Passaggio 1: Inizializzazione dei centroidi (casuale o K-Means++)
+# Passaggio 2: Assegnazione dei punti al centroide più vicino
+# Passaggio 3: Ricalcolo dei centroidi
+# Passaggio 4: Assegnazione dei punti al centroide più vicino (con i nuovi centroidi)
+# Passaggio 5: Ricalcolo dei centroidi
+# ... e così via fino alla convergenza (ad esempio, il 10° passaggio mostra uno stato quasi finale).
 
-        for i in range(n):
-            genere = np.random.choice(["Maschio", "Femmina"], p=[0.45, 0.55])
-            carta_fedelta = np.random.choice([True, False], p=[0.7, 0.3])
-            data.append([
-                max(18, min(80, int(eta[i]))),
-                genere,
-                max(20000, min(200000, int(reddito[i]))),
-                max(0, int(visite_online_mensili[i])),
-                max(10, float(dimensione_cestino_media[i])),
-                float(pct_acquisti_bio[i]),
-                float(sensibilita_sconto[i]),
-                max(0, int(visite_negozio_mensili[i])),
-                float(lealta_brand[i]),
-                carta_fedelta,
-                nome_archetipo
-            ])
+# Per il PowerPoint e la simulazione in Streamlit, potremmo visualizzare:
+# - Stato iniziale (punti e centroidi casuali)
+# - Dopo 1 iterazione (punti riassegnati, centroidi ricalcolati)
+# - Dopo 2 iterazioni...
+# - ...
+# - Dopo 10 iterazioni (mostrando come si sono stabilizzati i cluster)
 
-    df = pd.DataFrame(data, columns=[
-        "Età", "Genere", "Reddito Annuo ($)",
-        "Visite Online Mensili", "Dimensione Cestino Media ($)",
-        "Percentuale Acquisti Bio", "Sensibilità allo Sconto",
-        "Visite Mensili al Negozio", "Punteggio Lealtà Brand",
-        "Membro Carta Fedeltà", "Segmento Vero"
-    ])
-    df = df.sample(frac=1, random_state=stato_casuale).reset_index(drop=True)
+# Per visualizzare questo in Python (non le 10 iterazioni esatte, ma il risultato finale con un K scelto):
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d') # Per 3 variabili esplicative
 
-    caratteristiche = [
-        "Età", "Reddito Annuo ($)", "Visite Online Mensili",
-        "Dimensione Cestino Media ($)", "Percentuale Acquisti Bio",
-        "Sensibilità allo Sconto", "Visite Mensili al Negozio",
-        "Punteggio Lealtà Brand"
-    ]
-    X = df[caratteristiche].copy()
-    scaler = StandardScaler()
-    X_scalato = scaler.fit_transform(X)
-    return df, X_scalato, caratteristiche
+# Scatter plot dei punti colorati in base al cluster assegnato
+ax.scatter(X_scaled[:, 0], X_scaled[:, 1], X_scaled[:, 2], c=cluster_labels, cmap='viridis', s=50, alpha=0.6)
 
-df, X_scalato, caratteristiche = genera_dati_retail(n_campioni, livello_rumore, stato_casuale)
+# Plot dei centroidi
+ax.scatter(centroids[:, 0], centroids[:, 1], centroids[:, 2], marker='X', s=200, color='red', label='Centroids')
 
-# --- Riduzione Dimensionalità ---
-@st.cache_data
-def riduci_dimensioni(X, metodo, stato_casuale):
-    if metodo == "PCA":
-        n_componenti_pca = min(X.shape[1], 2)
-        if n_componenti_pca < 2:
-            st.warning("Non abbastanza caratteristiche per PCA (richiede almeno 2).")
-            return X[:, :1], f"PCA (Componente 1)"
-        riduttore = PCA(n_components=n_componenti_pca, random_state=stato_casuale)
-        ridotto = riduttore.fit_transform(X)
-        varianza_spiegata = riduttore.explained_variance_ratio_.sum() * 100
-        return ridotto, f"PCA (Varianza Spiegata: {varianza_spiegata:.1f}%)"
-    elif metodo == "t-SNE":
-        perplexity_val = min(30, len(X) - 1)
-        if perplexity_val <= 1:
-            st.warning("Non abbastanza campioni per t-SNE.")
-            return X[:, :2], "Caratteristiche Originali (Prime 2)"
-        riduttore = TSNE(n_components=2, random_state=stato_casuale, perplexity=perplexity_val)
-        ridotto = riduttore.fit_transform(X)
-        return ridotto, "t-SNE"
-    else:
-        if X.shape[1] < 2:
-            st.warning("Non abbastanza caratteristiche originali per un grafico 2D.")
-            return X[:, :1], "Caratteristiche Originali (Prima 1)"
-        return X[:, :2], "Caratteristiche Originali (Prime 2)"
+ax.set_xlabel('Feature 1 (Scaled)')
+ax.set_ylabel('Feature 2 (Scaled)')
+ax.set_zlabel('Feature 3 (Scaled)')
+ax.set_title(f'K-Means Clustering (K={n_clusters})')
+ax.legend()
+# plt.show() # Anche questo da usare in Streamlit
 
-X_ridotto, metodo_riduzione = riduci_dimensioni(X_scalato, dim_reduction, stato_casuale)
+# --- Fine Simulazione Concettuale ---
 
-# --- Clustering ---
-@st.cache_data
-def esegui_clustering(X, algoritmo, params, stato_casuale):
-    etichette = np.array([])
-    modello = None
-    centri = None
+# 6. Prestazioni (Metriche di Performance)
+# Per il clustering, le metriche sono diverse dalla regressione/classificazione supervisionata.
+# Non abbiamo etichette "vere" per confrontare, quindi usiamo metriche di "coerenza" interna.
 
-    if algoritmo == "K-Means":
-        if params['n_clusters'] >= X.shape[0]:
-            st.warning(f"K-Means: Il numero di cluster ({params['n_clusters']}) deve essere inferiore al numero di campioni ({X.shape[0]}).")
-            etichette = np.zeros(X.shape[0], dtype=int)
-            centri = np.mean(X, axis=0).reshape(1, -1)
-        else:
-            modello = KMeans(
-                n_clusters=params['n_clusters'],
-                init=params['init_method'],
-                max_iter=params['max_iter'],
-                random_state=stato_casuale,
-                n_init='auto'
-            )
-            etichette = modello.fit_predict(X)
-            centri = modello.cluster_centers_ if hasattr(modello, 'cluster_centers_') else None
-    elif algoritmo == "DBSCAN":
-        if params['min_samples'] >= X.shape[0] or params['eps'] <= 0:
-            st.warning(f"DBSCAN: Parametri non validi. Tutti i punti saranno rumore.")
-            etichette = np.array([-1]*X.shape[0])
-        else:
-            modello = DBSCAN(
-                eps=params['eps'],
-                min_samples=params['min_samples'],
-                metric=params['metric']
-            )
-            etichette = modello.fit_predict(X)
-            centri = None
-    return etichette, modello, centri
+# Silhouette Score: Misura quanto un oggetto è simile al proprio cluster (coesione) rispetto ad altri cluster (separazione).
+# Il valore varia da -1 (assegnazione sbagliata) a +1 (cluster ben separati).
+silhouette_avg = silhouette_score(X_scaled, cluster_labels)
+print(f"\nSilhouette Score: {silhouette_avg:.3f}")
 
-if algoritmo == "K-Means":
-    params_algo = {
-        'n_clusters': n_clusters,
-        'init_method': init_method,
-        'max_iter': max_iter
-    }
-else:
-    params_algo = {
-        'eps': eps,
-        'min_samples': min_samples,
-        'metric': metric
-    }
+# Altre metriche: Davies-Bouldin Index, Calinski-Harabasz Index.
+# Non le implementiamo tutte qui, ma puoi menzionarle nel PowerPoint.
 
-etichette, modello, centri = esegui_clustering(
-    X_scalato,
-    algoritmo,
-    params_algo,
-    stato_casuale
-)
+# 7. Struttura del Modello (Spiegazione)
+# Descrizione del modello addestrato: numero di cluster, posizione dei centroidi.
+# Possibili interpretazioni dei cluster trovati.
 
-# --- Metriche di Valutazione ---
-def calcola_metriche_di_valutazione(X, etichette):
-    metriche = {}
-    etichette_uniche = set(etichette)
-    n_cluster_reali = len(etichette_uniche) - (1 if -1 in etichette_uniche else 0)
-    if n_cluster_reali > 1 and len(etichette) > 1 and not all(l == -1 for l in etichette):
-        try:
-            metriche['Silhouette Score'] = silhouette_score(X, etichette)
-        except Exception:
-            metriche['Silhouette Score'] = np.nan
-        try:
-            metriche['Indice Davies-Bouldin'] = davies_bouldin_score(X, etichette)
-        except Exception:
-            metriche['Indice Davies-Bouldin'] = np.nan
-        try:
-            metriche['Indice Calinski-Harabasz'] = calinski_harabasz_score(X, etichette)
-        except Exception:
-            metriche['Indice Calinski-Harabasz'] = np.nan
-    else:
-        metriche['Silhouette Score'] = np.nan
-        metriche['Indice Davies-Bouldin'] = np.nan
-        metriche['Indice Calinski-Harabasz'] = np.nan
+# 8. Simulazione (Interfaccia Streamlit)
+# Questo sarà il cuore dell'applicazione Streamlit. Permetterà all'utente di:
+# - Caricare un dataset (o usare quello predefinito).
+# - Selezionare il numero di cluster (K).
+# - Visualizzare il metodo del gomito.
+# - Eseguire l'algoritmo e visualizzare i cluster risultanti.
+# - Vedere le metriche di performance.
+# - (Opzionale) Interagire con un "nuovo punto" e vedere a quale cluster verrebbe assegnato.
 
-    unique, counts = np.unique(etichette, return_counts=True)
-    metriche['Distribuzione Cluster'] = dict(zip(unique, counts))
-    metriche['Numero di Cluster Rilevati'] = n_cluster_reali
-    metriche['Punti di Rumore'] = counts[unique == -1][0] if -1 in unique else 0
-    return metriche
+# 9. FAQ (Domande Frequenti)
+# - Come scegliere il valore di K? (Elbow Method, Silhouette Score)
+# - Quali sono i limiti del K-Means? (Sensibilità all'inizializzazione, forma dei cluster)
+# - Quando usare K-Means?
+# - K-Means è un algoritmo deterministico? (No, per l'inizializzazione casuale)
 
-metriche = calcola_metriche_di_valutazione(X_scalato, etichette)
+---
 
-# --- Visualizzazione ---
-def crea_grafico_cluster(X, etichette, centri, metodo, motore, df_originale):
-    if X.shape[1] < 2:
-        st.warning(f"Il metodo di riduzione di dimensionalità '{metodo}' ha prodotto meno di 2 dimensioni. Impossibile creare un grafico a dispersione 2D.")
-        return None
+### Prossimi Passi per te:
 
-    df_plot = pd.DataFrame({
-        "x": X[:, 0],
-        "y": X[:, 1],
-        "cluster": etichette
-    })
+1.  **Scegliere un Dataset:** Decidi se usare un dataset generato (`make_blobs`) o uno reale (es. Iris, o un dataset più grande per l'analisi clienti se ne hai uno in mente). L'Iris è un classico, anche se è un dataset di classificazione, si presta bene per dimostrare il clustering.
+2.  **Inizia il Codice Streamlit:**
+    * Crea un file `app.py`.
+    * Installa `streamlit` (`pip install streamlit`).
+    * Inizia a mettere il codice Python che ti ho fornito dentro `app.py`, adattandolo per Streamlit (es. `st.write`, `st.pyplot`, `st.sidebar` per input dell'utente).
+3.  **Visualizzazione delle Iterazioni (Il punto più "difficile" ma interessante):**
+    * Per mostrare davvero i "primi 10 passaggi di iterazione", dovresti implementare una versione molto semplificata del K-Means *da zero* (senza `sklearn.cluster.KMeans` per l'addestramento, ma puoi comunque usare le funzioni di scikit-learn per la distanza e l'assegnazione se vuoi). Questo ti permetterebbe di salvare lo stato dei centroidi e delle assegnazioni dopo ogni iterazione e visualizzarli.
+    * **Alternativa più semplice:** Nel PowerPoint e in Streamlit, potresti *spiegare* le iterazioni concettualmente come ho fatto sopra, mostrando solo il risultato finale dell'algoritmo di `sklearn`, ma enfatizzando che questo risultato è raggiunto attraverso iterazioni progressive. Per l'esame, la spiegazione concettuale di cosa succede in ogni iterazione è più importante della visualizzazione grafica esatta di ogni singolo micro-passaggio se l'implementazione diventa troppo complessa.
+4.  **Prepara il PowerPoint:** Inizia a delineare le slide seguendo la struttura che ti ho suggerito. Includi grafici (come il metodo del gomito e la visualizzazione dei cluster) che genererai con il tuo codice Python.
+5.  **GitHub:** Crea un repository GitHub e carica il tuo codice `app.py` e qualsiasi altro file necessario (es. i dati se usi un file CSV).
+6.  **Streamlit Cloud:** Una volta che hai il codice su GitHub, puoi collegarlo a Streamlit Cloud per deployare la tua app.
 
-    if motore == "Plotly":
-        fig = px.scatter(
-            df_plot, x="x", y="y", color=df_plot["cluster"].astype(str),
-            title=f"Clustering ({metodo})",
-            labels={"color": "Cluster"}
-        )
-        # Centroidi per K-Means
-        if centri is not None and centri.shape[1] >= 2:
-            # Riduci i centroidi nelle stesse dimensioni
-            if metodo == "PCA":
-                pca = PCA(n_components=2, random_state=42)
-                pca.fit(X_scalato)
-                centri_2d = pca.transform(centri)
-            elif metodo == "t-SNE":
-                tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(centri)-1))
-                centri_2d = tsne.fit_transform(centri)
-            else:
-                centri_2d = centri[:, :2]
-            fig.add_scatter(
-                x=centri_2d[:, 0], y=centri_2d[:, 1],
-                mode='markers', marker=dict(color='black', size=16, symbol='x'),
-                name='Centroidi'
-            )
-        # Evidenzia punti di rumore per DBSCAN
-        if (etichette == -1).any():
-            rumore = df_plot[etichette == -1]
-            fig.add_scatter(
-                x=rumore["x"], y=rumore["y"],
-                mode='markers', marker=dict(color='red', size=8, symbol='circle-open'),
-                name='Rumore'
-            )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        import matplotlib.pyplot as plt
-        import matplotlib.cm as cm
-        plt.figure(figsize=(8, 6))
-        scatter = plt.scatter(df_plot["x"], df_plot["y"], c=df_plot["cluster"], cmap="tab10", alpha=0.7)
-        if centri is not None and centri.shape[1] >= 2:
-            plt.scatter(centri[:, 0], centri[:, 1], c='black', s=200, marker='X', label='Centroidi')
-        if (etichette == -1).any():
-            plt.scatter(df_plot["x"][etichette == -1], df_plot["y"][etichette == -1], c='red', s=30, label='Rumore', marker='o')
-        plt.title(f"Clustering ({metodo})")
-        plt.xlabel("Componente 1")
-        plt.ylabel("Componente 2")
-        plt.legend()
-        st.pyplot(plt.gcf())
-        plt.close()
-
-# --- OUTPUT PRINCIPALE ---
-st.header("🔎 Visualizzazione Clustering")
-crea_grafico_cluster(X_ridotto, etichette, centri, metodo_riduzione, plot_engine, df)
-
-# --- Step by Step (K-Means) ---
-if algoritmo == "K-Means" and 'show_steps' in locals() and show_steps:
-    st.subheader("🔍 Passi dell'algoritmo K-Means")
-    st.markdown("""
-    1. **Inizializzazione dei centroidi** (casuale o k-means++)
-    2. **Assegnazione** di ogni punto al centroide più vicino
-    3. **Aggiornamento** dei centroidi come media dei punti assegnati
-    4. Ripeti i passi 2-3 fino a convergenza o max iterazioni
-    """)
-    if modello is not None:
-        st.write("Centroidi finali (spazio originale):")
-        st.dataframe(pd.DataFrame(modello.cluster_centers_, columns=caratteristiche))
-
-# --- Metriche e spiegazioni ---
-st.header("📏 Metriche di valutazione clustering")
-for nome, valore in metriche.items():
-    if isinstance(valore, dict):
-        st.write(f"**{nome}:** {valore}")
-    else:
-        st.write(f"**{nome}:** {valore:.3f}" if isinstance(valore, float) else f"**{nome}:** {valore}")
-
-st.markdown("""
-- **Silhouette Score**: quanto i cluster sono separati (più vicino a 1 è meglio).
-- **Davies-Bouldin**: quanto i cluster sono compatti (più basso è meglio).
-- **Calinski-Harabasz**: rapporto tra dispersione intra-cluster e inter-cluster (più alto è meglio).
-""")
-
-st.markdown("### Come cambiano i risultati al variare dei parametri?")
-if algoritmo == "K-Means":
-    st.info("""
-    - **Se aumenti K**, i gruppi diventano più piccoli e specifici.
-    - **Se scegli 'random' come inizializzazione**, i risultati possono cambiare a ogni esecuzione.
-    """)
-else:
-    st.info("""
-    - **Se aumenti eps**, i cluster diventano più grandi e meno selettivi.
-    - **Se aumenti min_samples**, servono più punti vicini per formare un cluster (più punti saranno rumore).
-    """)
-
-st.markdown("---")
-st.markdown("**App didattica realizzata con ❤️ per l'apprendimento del clustering!**")
+Se hai domande specifiche su un punto, ad esempio "Come faccio a far scegliere il numero di cluster all'utente in Streamlit?" o "Come visualizzo il metodo del gomito in Streamlit?", chiedi pure! Sono qui per aiutarti passo dopo passo.
