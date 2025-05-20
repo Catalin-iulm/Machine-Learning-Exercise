@@ -14,13 +14,13 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # --- Configurazione Pagina ---
-st.set_page_config(layout="wide", page_title="Advanced Clustering for Retail Analytics", page_icon="🛒")
+st.set_page_config(layout="wide", page_title="Clustering Avanzato per l'Analisi nel Retail", page_icon="🛒")
 
 # --- Titolo e Introduzione ---
-st.title("🛒 Advanced Customer Segmentation for Retail Analytics")
+st.title("🛒 Segmentazione Avanzata dei Clienti per l'Analisi nel Retail")
 st.markdown("""
-This interactive application allows you to explore advanced clustering algorithms on simulated supermarket customer data. 
-Discover hidden customer segments and gain actionable insights for targeted marketing strategies.
+Questa applicazione interattiva consente di esplorare algoritmi di clustering avanzati su dati simulati di clienti di supermercati. 
+Scopri segmenti nascosti di clienti e ottieni informazioni utili per strategie di marketing mirate.
 """)
 
 # --- Sidebar Controls ---
