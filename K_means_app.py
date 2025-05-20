@@ -416,6 +416,7 @@ if len(set(labels_pred)) > 0:
         for c_name, profile_data in cluster_profiles.items():
             if c_name == "Rumore/Outlier": continue # Exclude noise from this comparative bar chart if preferred
             means_only = {k.replace('Media ', ''): v for k, v in profile_data.items() if 'Media ' in k}
+            # Add a row to the DataFrame for this cluster's means
             cluster_means_df = pd.concat([cluster_means_df, pd.DataFrame(means_only, index=[c_name])])
         
         if not cluster_means_df.empty:
@@ -458,12 +459,18 @@ if len(set(labels_pred)) > 0:
         * La **Deviazione Standard (Std Dev)** indica la variabilità all'interno del segmento per quella caratteristica: una Std Dev bassa significa che i clienti sono molto simili per quella caratteristica, una alta indica più eterogeneità.
         """)
         
-        # Optional: Bar chart for the selected cluster's mean features
+        # FIX START HERE
         st.subheader(f"Visualizzazione delle Medie delle Caratteristiche per il {cluster_to_show}")
         mean_features_for_single_cluster = {k.replace('Media ', ''): v for k, v in profile_data.items() if 'Media ' in k}
-        # Create a DataFrame suitable for bar_chart, with a single row for the selected cluster
-        df_for_bar_chart = pd.DataFrame([mean_features_for_single_cluster])
-        st.bar_chart(df_for_bar_chart.T)
+        
+        # Convert the dictionary to a pandas Series, then to a DataFrame for st.bar_chart
+        # This ensures feature names are the index, and values are in a single column
+        df_for_bar_chart = pd.DataFrame(mean_features_for_single_cluster.items(), columns=['Caratteristica', 'Valore Medio'])
+        df_for_bar_chart = df_for_bar_chart.set_index('Caratteristica')
+        
+        st.bar_chart(df_for_bar_chart) # Pass the correctly structured DataFrame
+        # FIX END HERE
+
         st.info("Questo grafico a barre evidenzia i valori medi delle caratteristiche per il segmento selezionato. Osserva quali caratteristiche hanno valori particolarmente alti o bassi per questo segmento rispetto agli altri.")
 else:
     st.info("Nessun cluster trovato. Assicurati di aver generato i dati e di aver impostato correttamente i parametri dell'algoritmo.")
