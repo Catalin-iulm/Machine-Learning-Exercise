@@ -22,45 +22,44 @@ Tool interattivo per segmentare la clientela retail utilizzando algoritmi di clu
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Configurazione")
-    
+
     # Selezione algoritmo
-    algoritmo = st.radio("Algoritmo:", ["K-Means", "DBSCAN"])
-    
+    algoritmo_selezionato = st.radio("Algoritmo:", ["K-Means", "DBSCAN"])
+
     # Selezione features
     features_disponibili = [
-        "Età", "Reddito Annuale", "Visite Mensili", 
-        "Spesa Media", "% Acquisti Online", 
+        "Età", "Reddito Annuale", "Visite Mensili",
+        "Spesa Media", "% Acquisti Online",
         "Frequenza Acquisti", "Valore Carrello"
     ]
     features_selezionate = st.multiselect(
-        "Seleziona features per il clustering:",
+        "Seleziona caratteristiche per il clustering:",
         features_disponibili,
         default=["Età", "Reddito Annuale", "Visite Mensili"],
         max_selections=5
     )
-    
-    if algoritmo == "K-Means":
-        n_clusters = st.slider("Numero cluster:", 2, 10, 4)
-        max_iter = st.slider("Massime iterazioni:", 1, 10, 5)
-        
+
+    if algoritmo_selezionato == "K-Means":
+        num_cluster = st.slider("Numero di cluster:", 2, 10, 4)
+        max_iterazioni = st.slider("Massime iterazioni:", 1, 30, 10) # Aumentato range per più visibilità
+        random_state_kmeans = st.number_input("Seed per riproducibilità (K-Means):", min_value=0, value=42)
+
         # Visualizzazione evoluzione cluster
-        if st.checkbox("Mostra evoluzione iterazioni"):
-            n_iter_viz = st.slider("Numero iterazioni da visualizzare:", 1, max_iter, min(3, max_iter))
-    else:
-        eps = st.slider("Raggio (epsilon):", 0.1, 1.0, 0.5, step=0.05)
-        min_samples = st.slider("Minimo campioni:", 2, 20, 5)
-    
-    riduzione_dim = st.selectbox("Riduzione dimensionale:", ["PCA", "t-SNE"])
-    
-    if st.button("🔍 Esegui Analisi"):
-        st.experimental_rerun()
+        mostra_evoluzione_cluster = st.checkbox("Mostra evoluzione iterazioni (K-Means)")
+        if mostra_evoluzione_cluster:
+            num_iter_viz = st.slider("Numero di iterazioni da visualizzare:", 1, max_iterazioni, min(5, max_iterazioni))
+    else: # DBSCAN
+        epsilon = st.slider("Raggio (epsilon):", 0.1, 2.0, 0.5, step=0.05) # Aumentato range
+        min_campioni = st.slider("Minimo campioni:", 2, 20, 5)
+
+    riduzione_dimensionale_metodo = st.selectbox("Metodo di riduzione dimensionale:", ["PCA", "t-SNE"])
 
 # Generazione dati simulati
 @st.cache_data
 def genera_dati():
     np.random.seed(42)
     n = 1500
-    
+
     # Generiamo 4 cluster naturali con tutte le features
     dati = {
         "Età": np.round(np.concatenate([
@@ -108,14 +107,14 @@ def genera_dati():
         "Genere": np.random.choice(["M", "F"], size=n),
         "Cluster Reale": np.repeat([1, 2, 3, 4], n//4)
     }
-    
+
     return pd.DataFrame(dati)
 
 df = genera_dati()
 
 # Verifica che siano selezionate almeno 2 features
 if len(features_selezionate) < 2:
-    st.warning("Seleziona almeno 2 features per il clustering!")
+    st.warning("Seleziona almeno 2 caratteristiche per il clustering!")
     st.stop()
 
 # Preprocessing
@@ -123,32 +122,43 @@ scaler = StandardScaler()
 X = scaler.fit_transform(df[features_selezionate])
 
 # Riduzione dimensionale
-if riduzione_dim == "PCA":
-    reducer = PCA(n_components=2)
-    X_ridotto = reducer.fit_transform(X)
-    var_spiegata = reducer.explained_variance_ratio_.sum() * 100
-    metodo_riduzione = f"PCA (Varianza: {var_spiegata:.1f}%)"
-else:
-    reducer = TSNE(n_components=2, perplexity=30)
-    X_ridotto = reducer.fit_transform(X)
-    metodo_riduzione = "t-SNE"
+if riduzione_dimensionale_metodo == "PCA":
+    riduttore = PCA(n_components=2)
+    X_ridotto = riduttore.fit_transform(X)
+    varianza_spiegata = riduttore.explained_variance_ratio_.sum() * 100
+    metodo_riduzione_str = f"PCA (Varianza: {varianza_spiegata:.1f}%)"
+else: # t-SNE
+    # Per t-SNE, è bene impostare un random_state per riproducibilità
+    riduttore = TSNE(n_components=2, perplexity=30, random_state=42, learning_rate='auto', init='random')
+    X_ridotto = riduttore.fit_transform(X)
+    metodo_riduzione_str = "t-SNE"
 
 # Clustering
-if algoritmo == "K-Means":
-    model = KMeans(n_clusters=n_clusters, max_iter=max_iter, n_init='auto')
-    labels = model.fit_predict(X)
-    centers = scaler.inverse_transform(model.cluster_centers_)
-    
-    # Visualizzazione evoluzione iterazioni
-    if 'n_iter_viz' in locals():
-        st.subheader("Evoluzione dei Cluster durante le Iterazioni")
-        
-        # Esegui K-Means per ogni iterazione
+modello_clustering = None # Inizializza a None
+labels = np.array([]) # Inizializza labels a un array vuoto
+centers = None
+
+if algoritmo_selezionato == "K-Means":
+    modello_clustering = KMeans(n_clusters=num_cluster, max_iter=max_iterazioni, n_init='auto', random_state=random_state_kmeans)
+    labels = modello_clustering.fit_predict(X)
+    centers = scaler.inverse_transform(modello_clustering.cluster_centers_)
+
+    # Visualizzazione evoluzione iterazioni K-Means
+    if mostra_evoluzione_cluster:
+        st.subheader("Risultati K-Means con diverse iterazioni massime")
+        st.info("Nota: Ogni grafico mostra il risultato finale di un'esecuzione K-Means interrotta al numero specificato di iterazioni, non l'evoluzione passo-passo di una singola esecuzione.")
+
         figs = []
-        for i in range(1, n_iter_viz+1):
-            model_temp = KMeans(n_clusters=n_clusters, max_iter=i, n_init=1, init='random')
+        # Per mostrare l'evoluzione, addestriamo un nuovo modello K-Means per ogni iterazione
+        # Questo NON mostra l'evoluzione di UN SINGOLO modello, ma il risultato di modelli
+        # che si fermano a X iterazioni. Per una vera evoluzione, servirebbe un callback
+        # che scikit-learn non espone direttamente.
+        for i in range(1, num_iter_viz + 1):
+            # Usiamo n_init=1 e init='random' per simulare un'inizializzazione specifica per ogni iterazione
+            # e mostrare la convergenza in modo più evidente.
+            model_temp = KMeans(n_clusters=num_cluster, max_iter=i, n_init=1, init='random', random_state=random_state_kmeans)
             labels_temp = model_temp.fit_predict(X)
-            
+
             fig, ax = plt.subplots(figsize=(6, 4))
             scatter = ax.scatter(X_ridotto[:, 0], X_ridotto[:, 1], c=labels_temp, cmap='viridis', alpha=0.6)
             ax.set_title(f"Iterazione {i}")
@@ -157,9 +167,9 @@ if algoritmo == "K-Means":
             plt.colorbar(scatter, ax=ax, label='Cluster')
             figs.append(fig)
             plt.close()
-        
+
         # Mostra i grafici in colonne
-        cols = st.columns(n_iter_viz)
+        cols = st.columns(num_iter_viz)
         for i, (col, fig) in enumerate(zip(cols, figs), 1):
             with col:
                 st.pyplot(fig)
@@ -168,29 +178,41 @@ if algoritmo == "K-Means":
                 fig.savefig(buf, format="png", dpi=100)
                 st.download_button(
                     label=f"Scarica iterazione {i}",
-                    data=buf,
+                    data=buf.getvalue(), # Usa getvalue() per BytesIO
                     file_name=f"kmeans_iterazione_{i}.png",
                     mime="image/png"
                 )
-else:
-    model = DBSCAN(eps=eps, min_samples=min_samples)
-    labels = model.fit_predict(X)
-    centers = None
+elif algoritmo_selezionato == "DBSCAN":
+    modello_clustering = DBSCAN(eps=epsilon, min_samples=min_campioni)
+    labels = modello_clustering.fit_predict(X)
+    centers = None # DBSCAN non ha centroidi espliciti
 
 # Calcolo metriche con gestione degli errori
-try:
-    if len(np.unique(labels)) > 1 and -1 not in np.unique(labels):
-        silhouette = silhouette_score(X, labels)
-    else:
-        silhouette = None
-except ValueError:
-    silhouette = None
+silhouette_score_value = None
+unique_labels = np.unique(labels)
+# Il Silhouette Score richiede almeno 2 cluster e non tutti i punti nel cluster di rumore (-1)
+if len(unique_labels) > 1 and (len(unique_labels) > 2 or -1 not in unique_labels):
+    try:
+        # Se DBSCAN genera un cluster -1 (rumore), lo escludiamo per il calcolo del silhouette score
+        # in quanto non rappresenta un cluster vero e proprio.
+        if -1 in unique_labels:
+            X_filtered = X[labels != -1]
+            labels_filtered = labels[labels != -1]
+            if len(np.unique(labels_filtered)) > 1: # Assicurati che ci siano ancora almeno 2 cluster dopo il filtraggio
+                 silhouette_score_value = silhouette_score(X_filtered, labels_filtered)
+        else:
+            silhouette_score_value = silhouette_score(X, labels)
+    except ValueError:
+        silhouette_score_value = None
+else:
+    silhouette_score_value = None
+
 
 # Creazione DataFrame per plotting
 plot_df = pd.DataFrame({
     "Componente_1": X_ridotto[:, 0],
     "Componente_2": X_ridotto[:, 1],
-    "Cluster": labels.astype(str)
+    "Cluster": labels.astype(str) # Converti in stringa per plotly, specialmente per -1 in DBSCAN
 })
 
 # Aggiunta delle features selezionate per l'hover
@@ -202,9 +224,9 @@ tab1, tab2, tab3 = st.tabs(["📊 Risultati", "📈 Analisi", "❓ Guida"])
 
 with tab1:
     st.header("Risultati Clustering")
-    
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         # Plot cluster con gestione degli errori
         try:
@@ -213,13 +235,15 @@ with tab1:
                 x="Componente_1",
                 y="Componente_2",
                 color="Cluster",
-                title=f"Risultati Clustering ({metodo_riduzione})",
+                title=f"Risultati Clustering ({metodo_riduzione_str})",
                 labels={
                     "Componente_1": "Componente 1",
                     "Componente_2": "Componente 2",
                     "Cluster": "Cluster"
                 },
-                hover_data=features_selezionate
+                hover_data=features_selezionate,
+                # Aggiungi un tooltip per i cluster di rumore di DBSCAN
+                color_discrete_map={'-1': 'grey'} if algoritmo_selezionato == "DBSCAN" else None
             )
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
@@ -227,65 +251,85 @@ with tab1:
             # Fallback a matplotlib
             fig, ax = plt.subplots()
             scatter = ax.scatter(X_ridotto[:, 0], X_ridotto[:, 1], c=labels, cmap='viridis')
-            ax.set_title(f"Risultati Clustering ({metodo_riduzione})")
+            ax.set_title(f"Risultati Clustering ({metodo_riduzione_str})")
             ax.set_xlabel("Componente 1")
             ax.set_ylabel("Componente 2")
             plt.colorbar(scatter, ax=ax, label='Cluster')
             st.pyplot(fig)
-    
+
     with col2:
         st.subheader("Metriche")
-        if silhouette is not None:
-            st.metric("Silhouette Score", 
-                     f"{silhouette:.3f}",
-                     help="Valore tra -1 e 1, più alto è meglio")
+        if silhouette_score_value is not None:
+            st.metric("Silhouette Score",
+                     f"{silhouette_score_value:.3f}",
+                     help="Valore tra -1 e 1: più alto è meglio. I valori negativi indicano che i punti potrebbero essere stati assegnati al cluster sbagliato, mentre i valori vicini a 0 indicano cluster sovrapposti. Per DBSCAN, i punti di rumore (-1) vengono esclusi dal calcolo.")
         else:
-            st.metric("Silhouette Score", 
+            st.metric("Silhouette Score",
                      "N/A",
-                     help="Non calcolabile (singolo cluster o solo rumore)")
-        
+                     help="Non calcolabile: richiede almeno 2 cluster validi (non solo rumore o un singolo cluster).")
+
         st.subheader("Distribuzione Cluster")
         cluster_counts = pd.Series(labels).value_counts().sort_index()
         st.bar_chart(cluster_counts)
-        
-        st.write(f"Features utilizzate: {', '.join(features_selezionate)}")
+
+        if algoritmo_selezionato == "DBSCAN" and '-1' in cluster_counts.index.astype(str):
+            st.info("Nota: Il cluster '-1' in DBSCAN rappresenta i punti di rumore (outlier).")
+
+        st.write(f"Caratteristiche utilizzate: {', '.join(features_selezionate)}")
 
 with tab2:
     st.header("Analisi Dettagliata")
-    
-    df["Cluster"] = labels
-    
+
+    df["Cluster"] = labels # Assegna le etichette dei cluster al DataFrame originale
+
     st.subheader("Statistiche per Cluster")
-    st.dataframe(
-        df.groupby("Cluster")[features_selezionate]
-        .agg(["mean", "median", "std"])
-        .style.background_gradient(cmap="Blues")
-    )
-    
-    st.subheader("Distribuzione Features")
-    feature = st.selectbox("Seleziona feature:", features_selezionate)
-    fig = px.box(df, x="Cluster", y=feature, color="Cluster")
-    st.plotly_chart(fig, use_container_width=True)
+    # Filtra il cluster -1 per le statistiche se è presente in DBSCAN
+    if algoritmo_selezionato == "DBSCAN" and -1 in df["Cluster"].unique():
+        st.dataframe(
+            df[df["Cluster"] != -1].groupby("Cluster")[features_selezionate]
+            .agg(["mean", "median", "std"])
+            .style.background_gradient(cmap="Blues")
+        )
+        st.info("Le statistiche medie per il cluster '-1' (rumore) non sono incluse in questa tabella, poiché non rappresenta un cluster tradizionale.")
+    else:
+        st.dataframe(
+            df.groupby("Cluster")[features_selezionate]
+            .agg(["mean", "median", "std"])
+            .style.background_gradient(cmap="Blues")
+        )
+
+    st.subheader("Distribuzione Caratteristiche per Cluster")
+    caratteristica_selezionata = st.selectbox("Seleziona caratteristica:", features_selezionate)
+    fig_box = px.box(df, x="Cluster", y=caratteristica_selezionata, color="Cluster", title=f"Distribuzione di '{caratteristica_selezionata}' per Cluster")
+    st.plotly_chart(fig_box, use_container_width=True)
 
 with tab3:
     st.header("Guida all'Uso")
-    
+
     st.markdown("""
     ### Come utilizzare questo strumento:
-    1. **Seleziona le features** che vuoi usare per il clustering (max 5)
-    2. **Scegli l'algoritmo**:
-       - **K-Means**: per cluster sferici di dimensioni simili
-       - **DBSCAN**: per cluster di forma arbitraria e rilevamento outlier
-    3. **Regola i parametri** dell'algoritmo
-    4. Clicca **Esegui Analisi** per vedere i risultati
-    
-    ### Interpretazione:
-    - **Silhouette Score**: misura la qualità del clustering (valore ideale > 0.5)
-    - I grafici mostrano la distribuzione dei dati dopo riduzione dimensionale
-    - Le tabelle mostrano le caratteristiche medie di ogni cluster
+    1.  **Seleziona le caratteristiche** che vuoi usare per il clustering (max 5) nella sidebar.
+    2.  **Scegli l'algoritmo** preferito nella sidebar:
+        * **K-Means**: adatto per cluster sferici di dimensioni simili. Richiede di specificare il numero di cluster (`Numero di cluster`).
+        * **DBSCAN**: ideale per cluster di forma arbitraria e per l'identificazione di punti di rumore (outlier). Richiede `Raggio (epsilon)` (distanza massima tra due campioni per essere considerati nella stessa vicinanza) e `Minimo campioni` (numero di campioni in una vicinanza per un punto per essere considerato un punto core).
+    3.  **Regola i parametri** specifici dell'algoritmo selezionato nella sidebar.
+    4.  L'analisi si aggiornerà automaticamente ad ogni modifica dei parametri.
     """)
-    
-    st.subheader("Descrizione Features")
+
+    st.subheader("Interpretazione dei Risultati:")
+    st.markdown("""
+    * **Silhouette Score**: È una metrica che misura la qualità del clustering. Varia tra -1 e 1.
+        * **Valori vicino a +1**: Indicano che i punti sono ben separati e formano cluster distinti.
+        * **Valori vicino a 0**: Suggeriscono che i cluster si sovrappongono o che i punti si trovano al limite tra due cluster.
+        * **Valori vicino a -1**: Indicano che i punti potrebbero essere stati assegnati al cluster sbagliato.
+        * Per DBSCAN, i punti di rumore (cluster '-1') non vengono inclusi nel calcolo del Silhouette Score.
+    * **Grafici dei Cluster**: Mostrano la distribuzione dei dati nel nuovo spazio a 2 dimensioni dopo la riduzione dimensionale (PCA o t-SNE). Cluster simili indicano segmenti di clienti con comportamenti o caratteristiche simili.
+    * **Distribuzione Cluster**: Un istogramma che mostra quanti punti ci sono in ogni cluster.
+    * **Statistiche per Cluster**: Le tabelle mostrano le medie, mediane e deviazioni standard delle caratteristiche selezionate per ogni cluster. Questo ti aiuta a capire il "profilo" di ogni segmento di clientela (es. "Clienti giovani ad alto reddito", "Anziani con bassa frequenza di acquisto").
+    * **Cluster '-1' (DBSCAN)**: Se utilizzi DBSCAN, potresti vedere un cluster etichettato '-1'. Questi sono i **punti di rumore (outlier)** che non sono stati assegnati a nessun cluster denso.
+    """)
+
+    st.subheader("Descrizione Caratteristiche")
     descrizioni = {
         "Età": "Età del cliente (arrotondata all'intero più vicino)",
         "Reddito Annuale": "Reddito annuale stimato in €",
@@ -295,10 +339,10 @@ with tab3:
         "Frequenza Acquisti": "Numero di acquisti mensili",
         "Valore Carrello": "Valore medio del carrello in €"
     }
-    
+
     for feat in features_selezionate:
         st.markdown(f"**{feat}**: {descrizioni.get(feat, '')}")
 
 # Footer
 st.markdown("---")
-st.markdown("Progetto di Data Science - Università IULM | [GitHub](https://github.com/)")
+st.markdown("Progetto di Data Science - Università IULM | [GitHub](https://github.com/)") # Sostituisci con il tuo link GitHub reale
