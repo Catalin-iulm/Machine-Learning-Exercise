@@ -33,7 +33,6 @@ def generate_retail_data():
     }
     
     return pd.DataFrame(data)
-
 df = generate_retail_data()
 
 # Sidebar semplificata
