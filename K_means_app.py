@@ -79,7 +79,7 @@ def generate_customer_data(n_samples, random_state):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_unscaled_numerical)
     
-    return X_scaled, df_unscaled, X_unscaled_numerical # Return numerical unscaled data too
+    return X_scaled, df_unscaled # Only return scaled data for algorithms and unscaled DataFrame for display
 
 # --- Mapping per Nomi Features Marketing ---
 # These are the actual column names in the df_unscaled numerical part
@@ -123,19 +123,12 @@ with st.sidebar:
                                              help="Controlla l'inizializzazione dei centroidi per la riproducibilità. Cambialo per vedere diverse configurazioni iniziali.")
     elif algoritmo_scelto == "DBSCAN":
         eps_param = st.slider("Epsilon (eps) - Raggio di Vicinato", 0.05, 2.0, 0.5, step=0.01,
-                             help="Distanza massima per considerare due 'clienti' vicini. Dato che i dati sono scalati, 0.5-1.0 è un buon punto di partenza.")
+                             help="Distanza massima per considerare due 'clienti' vicini. Dato che i dati sono scalati internamente, 0.5-1.0 è un buon punto di partenza.")
         min_samples_param = st.slider("Min Samples - Densità Minima", 1, 50, 15, # Adjusted min_samples for more structured data
                                      help="Numero minimo di 'clienti' in un vicinato per formare un segmento denso. I punti sotto questa soglia potrebbero essere considerati rumore.")
 
 # --- Generazione Dati ---
-X_data_scaled_full, df_data_unscaled, X_data_unscaled_numerical = generate_customer_data(n_samples_data, random_state_ds)
-
-# Extract indices for plotting features from the numerical array
-idx_x = list(feature_names_mapping.keys()).index(plot_feature_x)
-idx_y = list(feature_names_mapping.keys()).index(plot_feature_y)
-
-# Get the specific scaled features for plotting
-X_data_scaled_plot = X_data_scaled_full[:, [idx_x, idx_y]]
+X_data_scaled_full, df_data_unscaled = generate_customer_data(n_samples_data, random_state_ds)
 
 
 # --- Contesto Marketing per il Dataset ---
@@ -186,9 +179,19 @@ if algoritmo_scelto == "K-Means":
     kmeans_model = KMeans(n_clusters=k_clusters_param, random_state=kmeans_random_state_param, n_init='auto')
     labels_pred = kmeans_model.fit_predict(X_data_scaled_full) # Use full scaled data for clustering
     
-    # Centroids are in the full feature space, need to project to the 2D plot space
-    cluster_centers_coords_full = kmeans_model.cluster_centers_
-    cluster_centers_coords_plot = cluster_centers_coords_full[:, [idx_x, idx_y]] # Extract for plotting
+    # Centroids are in the full feature space (scaled), need to inverse transform them for plotting on unscaled axes
+    # To do this, we need to re-initialize a scaler on the *original* numerical data to use its inverse_transform
+    # This ensures consistency for the plotted centroids.
+    temp_scaler = StandardScaler()
+    temp_scaler.fit(df_data_unscaled[['Età', 'Reddito Medio Annuo (€)', 'Frequenza Visite al Sito/App (n/mese)', 'Tempo Medio Permanenza sul Sito/App (min)']].values)
+    
+    cluster_centers_coords_full_scaled = kmeans_model.cluster_centers_
+    cluster_centers_coords_full_unscaled = temp_scaler.inverse_transform(cluster_centers_coords_full_scaled)
+    
+    # Extract the relevant two dimensions for plotting (unscaled)
+    cluster_centers_coords_plot = cluster_centers_coords_full_unscaled[:, [df_data_unscaled.columns.get_loc(plot_feature_x) - 1, df_data_unscaled.columns.get_loc(plot_feature_y) - 1]]
+    # Adjust indices because 'Sesso' is in df_data_unscaled but not in X_unscaled_numerical
+    # We need to find the correct column index in the numerical features used for scaling.
     
     n_clusters_found_val = len(set(labels_pred))
     inertia_val = kmeans_model.inertia_
@@ -212,7 +215,7 @@ else:
 col1_plot, col2_metrics = st.columns([2,1])
 
 with col1_plot:
-    st.subheader(f"Grafico dei Segmenti di Clienti: '{plot_feature_x}' vs '{plot_feature_y}' (Dati Scalati)")
+    st.subheader(f"Grafico dei Segmenti di Clienti: '{plot_feature_x}' vs '{plot_feature_y}' (Dati Originali)")
     fig_cluster, ax_cluster = plt.subplots(figsize=(10, 7))
 
     # Colormap dinamica
@@ -232,6 +235,10 @@ with col1_plot:
                 color_map_for_plot[lbl_plot] = (np.random.rand(), np.random.rand(), np.random.rand(), 0.8)
             color_idx_plot +=1
     
+    # Use unscaled data for plotting
+    plot_x_data = df_data_unscaled[plot_feature_x]
+    plot_y_data = df_data_unscaled[plot_feature_y]
+
     for label_val_plot in unique_plot_labels:
         mask_plot = (labels_pred == label_val_plot)
         current_color_plot = color_map_for_plot.get(label_val_plot, (0,0,0,1))
@@ -239,7 +246,7 @@ with col1_plot:
         point_size_plot = 40 if label_val_plot == -1 else 60
         plot_legend_label = f'Clienti Rumore/Outlier (-1)' if label_val_plot == -1 else f'Segmento {label_val_plot}'
 
-        ax_cluster.scatter(X_data_scaled_plot[mask_plot, 0], X_data_scaled_plot[mask_plot, 1],
+        ax_cluster.scatter(plot_x_data[mask_plot], plot_y_data[mask_plot], # Use unscaled data for plot
                            facecolor=current_color_plot, marker=marker_style_plot, s=point_size_plot,
                            label=plot_legend_label, alpha=0.8,
                            edgecolor='k' if label_val_plot !=-1 else 'none', linewidth=0.5 if label_val_plot !=-1 else 0)
@@ -249,10 +256,10 @@ with col1_plot:
                            marker='P', s=250, facecolor='red', label='Centroide Segmento',
                            edgecolor='black', linewidth=1.5, zorder=10)
 
-    # Dynamic Axis Labels for scaled plot
+    # Dynamic Axis Labels for unscaled plot
     ax_cluster.set_title(f'Segmentazione con {algoritmo_scelto}')
-    ax_cluster.set_xlabel(f"{plot_feature_x} (Scalata)")
-    ax_cluster.set_ylabel(f"{plot_feature_y} (Scalata)")
+    ax_cluster.set_xlabel(f"{plot_feature_x}") # No "(Scalata)"
+    ax_cluster.set_ylabel(f"{plot_feature_y}") # No "(Scalata)"
     ax_cluster.legend(loc='best', fontsize='small')
     ax_cluster.grid(True, linestyle='--', alpha=0.6)
     st.pyplot(fig_cluster)
