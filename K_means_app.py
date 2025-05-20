@@ -1,192 +1,304 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import streamlit as st
-from sklearn.datasets import make_blobs
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from mpl_toolkits.mplot3d import Axes3D
+from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+import plotly.express as px
+import warnings
+warnings.filterwarnings('ignore')
 
-# Configurazione della pagina
-st.set_page_config(page_title="K-Means Clustering", page_icon="📊", layout="wide")
+# --- Configurazione Pagina ---
+st.set_page_config(layout="wide", page_title="Segmentazione Clienti Retail", page_icon="🛒")
 
-# Titolo e descrizione
-st.title("📊 K-Means Clustering Interattivo")
+# --- Titolo e Introduzione ---
+st.title("🛒 Strumento di Segmentazione Clienti")
 st.markdown("""
-Questa app dimostra l'algoritmo K-Means per il clustering di dati. 
-Puoi regolare i parametri nella sidebar e vedere come cambiano i risultati.
+Applicazione per l'analisi dei clienti di supermercati tramite clustering. 
+Identifica gruppi di clienti con comportamenti simili per strategie di marketing mirate.
 """)
 
-# Sidebar per i parametri
+# --- Controlli Sidebar ---
 with st.sidebar:
-    st.header("⚙️ Parametri")
-    n_samples = st.slider("Numero di campioni", 100, 1000, 300)
-    n_features = st.slider("Numero di features", 2, 5, 3)
-    n_centers = st.slider("Numero di cluster reali", 2, 6, 4)
-    cluster_std = st.slider("Deviazione standard dei cluster", 0.1, 2.0, 1.0)
-    max_k = st.slider("Massimo K da testare", 2, 10, 6)
-    random_state = st.number_input("Random state", 0, 100, 42)
+    st.header("⚙️ Configurazione")
+    
+    st.subheader("1. Generazione Dati")
+    n_clienti = st.slider("Numero clienti simulati", 100, 2500, 1000, step=50)
+    random_state = st.slider("Seed casuale", 0, 100, 42)
+    rumore = st.slider("Livello di rumore (%)", 0, 30, 5)
+    
+    st.subheader("2. Selezione Algoritmo")
+    algoritmo = st.radio("Algoritmo:", ["K-Means", "DBSCAN"], index=0)
+
+    # Parametri di default
+    n_clusters = 4
+    max_iter = 10
+    eps = 0.5
+    min_samples = 5
+
+    if algoritmo == "K-Means":
+        n_clusters = st.slider("Numero cluster", 2, 10, 4)
+        max_iter = st.slider("Massime iterazioni", 5, 15, 10)
+        
+    elif algoritmo == "DBSCAN":
+        eps = st.slider("Raggio (epsilon)", 0.1, 1.0, 0.5, step=0.05)
+        min_samples = st.slider("Minimo campioni", 2, 20, 5)
+    
+    st.subheader("3. Visualizzazione")
+    riduzione_dim = st.selectbox("Riduzione dimensionalità", ["PCA", "t-SNE"])
+    motore_grafico = st.selectbox("Motore grafico", ["Matplotlib", "Plotly"])
     
     st.markdown("---")
-    st.markdown("👨‍💻 [Codice sorgente](https://github.com/...)")
-    st.markdown("📚 [Documentazione K-Means](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html)")
+    if st.button("🔄 Esegui Analisi"):
+        st.experimental_rerun()
 
-# Generazione dati
+# --- Generazione Dati ---
 @st.cache_data
-def generate_data(n_samples, n_features, n_centers, cluster_std, random_state):
-    X, y = make_blobs(
-        n_samples=n_samples,
-        n_features=n_features,
-        centers=n_centers,
-        cluster_std=cluster_std,
-        random_state=random_state
-    )
-    return X, y
-
-X, y = generate_data(n_samples, n_features, n_centers, cluster_std, random_state)
-
-# Preprocessing
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-
-# Sezione Elbow Method
-st.header("1. Determinazione del numero ottimale di cluster")
-st.markdown("Il metodo Elbow aiuta a scegliere il numero ottimale di cluster osservando dove l'inerzia inizia a diminuire meno rapidamente.")
-
-inertia = []
-for k in range(1, max_k + 1):
-    kmeans = KMeans(n_clusters=k, random_state=random_state, n_init='auto')
-    kmeans.fit(X_scaled)
-    inertia.append(kmeans.inertia_)
-
-fig1, ax1 = plt.subplots(figsize=(10, 5))
-ax1.plot(range(1, max_k + 1), inertia, marker='o', linestyle='--', color='#1f77b4')
-ax1.set_title('Metodo Elbow')
-ax1.set_xlabel('Numero di cluster (K)')
-ax1.set_ylabel('Inerzia')
-ax1.grid(True)
-ax1.set_xticks(range(1, max_k + 1))
-st.pyplot(fig1)
-
-# Selezione del numero di cluster
-optimal_k = st.slider("Seleziona il numero di cluster (K) da usare", 2, max_k, min(4, max_k))
-
-# Esecuzione K-Means
-kmeans = KMeans(n_clusters=optimal_k, random_state=random_state, n_init='auto')
-cluster_labels = kmeans.fit_predict(X_scaled)
-centroids = kmeans.cluster_centers_
-
-# Visualizzazione risultati
-st.header("2. Risultati del clustering")
-
-# Seleziona tipo di visualizzazione
-if n_features == 2:
-    fig2, ax2 = plt.subplots(figsize=(10, 8))
-    scatter = ax2.scatter(
-        X_scaled[:, 0], 
-        X_scaled[:, 1], 
-        c=cluster_labels, 
-        cmap='viridis', 
-        s=50, 
-        alpha=0.7,
-        edgecolor='w'
-    )
-    ax2.scatter(
-        centroids[:, 0], 
-        centroids[:, 1], 
-        marker='X', 
-        s=200, 
-        color='red', 
-        label='Centroidi',
-        edgecolor='k'
-    )
-    ax2.set_xlabel('Feature 1 (scalata)')
-    ax2.set_ylabel('Feature 2 (scalata)')
-    ax2.legend()
+def genera_dati_clienti(n_clienti, rumore, random_state):
+    np.random.seed(random_state)
     
-elif n_features >= 3:
-    fig2 = plt.figure(figsize=(10, 8))
-    ax2 = fig2.add_subplot(111, projection='3d')
-    scatter = ax2.scatter(
-        X_scaled[:, 0], 
-        X_scaled[:, 1], 
-        X_scaled[:, 2], 
-        c=cluster_labels, 
-        cmap='viridis', 
-        s=50, 
-        alpha=0.7,
-        edgecolor='w'
-    )
-    ax2.scatter(
-        centroids[:, 0], 
-        centroids[:, 1], 
-        centroids[:, 2], 
-        marker='X', 
-        s=200, 
-        color='red', 
-        label='Centroidi',
-        edgecolor='k'
-    )
-    ax2.set_xlabel('Feature 1 (scalata)')
-    ax2.set_ylabel('Feature 2 (scalata)')
-    ax2.set_zlabel('Feature 3 (scalata)')
-    ax2.legend()
-
-plt.title(f'Clustering K-Means con K={optimal_k}')
-st.pyplot(fig2)
-
-# Metriche di valutazione
-st.header("3. Valutazione del clustering")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Silhouette Score")
-    silhouette_avg = silhouette_score(X_scaled, cluster_labels)
-    st.metric("Score", value=f"{silhouette_avg:.3f}")
+    tipologie = {
+        "Giovani Professionisti": {
+            "età": (28, 5), "reddito": (55000, 12000), 
+            "visite_online": (18, 5), "spesa_media": (45, 10),
+            "organico": (0.35, 0.1), "sensibilità_sconti": (0.6, 0.15),
+            "visite_negozio": (4, 2), "fedeltà_marca": (0.7, 0.1)
+        },
+        "Famiglie Economiche": {
+            "età": (38, 6), "reddito": (45000, 8000),
+            "visite_online": (8, 3), "spesa_media": (75, 15),
+            "organico": (0.15, 0.08), "sensibilità_sconti": (0.9, 0.05),
+            "visite_negozio": (12, 3), "fedeltà_marca": (0.4, 0.15)
+        },
+        "Clienti Premium": {
+            "età": (45, 8), "reddito": (95000, 20000),
+            "visite_online": (12, 4), "spesa_media": (120, 25),
+            "organico": (0.5, 0.15), "sensibilità_sconti": (0.3, 0.1),
+            "visite_negozio": (6, 2), "fedeltà_marca": (0.85, 0.08)
+        }
+    }
     
-    st.progress(min(max(0, (silhouette_avg + 1) / 2), 1.0))
+    dati = []
+    clienti_per_tipo = n_clienti // len(tipologie)
     
-    st.markdown("""
-    **Interpretazione:**
-    - Vicino a +1: cluster ben separati
-    - Vicino a 0: cluster che si sovrappongono
-    - Vicino a -1: punti probabilmente nel cluster sbagliato
-    """)
-
-with col2:
-    st.subheader("Statistiche dei cluster")
-    for i in range(optimal_k):
-        cluster_size = np.sum(cluster_labels == i)
-        st.write(f"**Cluster {i}**: {cluster_size} punti ({cluster_size/n_samples:.1%})")
+    for tipo, parametri in tipologie.items():
+        n = clienti_per_tipo
+        
+        età = np.random.normal(parametri["età"][0], parametri["età"][1], n)
+        reddito = np.random.normal(parametri["reddito"][0], parametri["reddito"][1], n)
+        visite_online = np.random.poisson(parametri["visite_online"][0], n)
+        spesa_media = np.abs(np.random.normal(parametri["spesa_media"][0], parametri["spesa_media"][1], n))
+        organico = np.clip(np.random.normal(parametri["organico"][0], parametri["organico"][1], n), 0, 1)
+        sensibilità_sconti = np.clip(np.random.normal(parametri["sensibilità_sconti"][0], parametri["sensibilità_sconti"][1], n), 0, 1)
+        visite_negozio = np.random.poisson(parametri["visite_negozio"][0], n)
+        fedeltà_marca = np.clip(np.random.normal(parametri["fedeltà_marca"][0], parametri["fedeltà_marca"][1], n), 0, 1)
+        
+        maschera_rumore = np.random.random(n) < (rumore/100)
+        
+        if maschera_rumore.any():
+            fattore_rumore = 1 + np.random.normal(0, 0.5, size=n)
+            
+            età[maschera_rumore] = età[maschera_rumore] * fattore_rumore[maschera_rumore]
+            reddito[maschera_rumore] = reddito[maschera_rumore] * fattore_rumore[maschera_rumore]
+            spesa_media[maschera_rumore] = np.abs(spesa_media[maschera_rumore] * fattore_rumore[maschera_rumore])
+            organico[maschera_rumore] = np.clip(organico[maschera_rumore] * fattore_rumore[maschera_rumore], 0, 1)
+        
+        for i in range(n):
+            genere = np.random.choice(["Maschio", "Femmina"], p=[0.45, 0.55])
+            carta_fedeltà = np.random.choice([True, False], p=[0.7, 0.3])
+            
+            dati.append([
+                max(18, min(80, int(età[i]))),
+                max(20000, min(200000, int(reddito[i]))),
+                max(0, int(visite_online[i]))),
+                max(10, float(spesa_media[i]))),
+                float(organico[i])),
+                float(sensibilità_sconti[i])),
+                max(0, int(visite_negozio[i]))),
+                float(fedeltà_marca[i])),
+                carta_fedeltà,
+                tipo
+            ])
     
-    st.markdown("---")
-    st.write("**Posizioni dei centroidi:**")
-    st.dataframe(centroids, height=200)
-
-# Spiegazione
-st.header("4. Spiegazione dell'algoritmo")
-with st.expander("Come funziona K-Means?"):
-    st.markdown("""
-    **K-Means** è un algoritmo di clustering che:
-    1. Sceglie K centroidi iniziali (random o con K-Means++)
-    2. Assegna ogni punto al centroide più vicino
-    3. Ricalcola la posizione dei centroidi
-    4. Ripete i passi 2-3 fino a convergenza
+    df = pd.DataFrame(dati, columns=[
+        "Età", "Reddito Annuale ($)", "Visite Online Mensili", 
+        "Spesa Media ($)", "% Acquisti Organici", 
+        "Sensibilità agli Sconti", "Visite al Negozio Mensili", 
+        "Indice Fedeltà alla Marca", "Carta Fedeltà", "Segmento Reale"
+    ])
     
-    **Parametri importanti:**
-    - K: numero di cluster da trovare
-    - Inizializzazione: come scegliere i centroidi iniziali
-    - Criterio di convergenza: quando fermare l'algoritmo
-    """)
+    df = df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    
+    features = [
+        "Età", "Reddito Annuale ($)", "Visite Online Mensili", 
+        "Spesa Media ($)", "% Acquisti Organici", 
+        "Sensibilità agli Sconti", "Visite al Negozio Mensili", 
+        "Indice Fedeltà alla Marca"
+    ]
+    
+    X = df[features].copy()
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    return df, X_scaled, features
 
-with st.expander("Come interpretare i risultati?"):
-    st.markdown("""
-    1. **Metodo Elbow**: Cerca il "gomito" nel grafico per scegliere K
-    2. **Silhouette Score**: Valuta la qualità della separazione dei cluster
-    3. **Visualizzazione**: Verifica che i cluster siano ben separati nello spazio
-    """)
+df, X_scaled, features = genera_dati_clienti(n_clienti, rumore, random_state)
 
-# Footer
+# --- Riduzione Dimensionalità ---
+@st.cache_data
+def riduci_dimensionalita(X, metodo, random_state):
+    if metodo == "PCA":
+        reducer = PCA(n_components=2, random_state=random_state)
+        ridotto = reducer.fit_transform(X)
+        varianza_spiegata = reducer.explained_variance_ratio_.sum() * 100
+        return ridotto, f"PCA (Varianza: {varianza_spiegata:.1f}%)"
+    else:  # t-SNE
+        reducer = TSNE(n_components=2, random_state=random_state)
+        ridotto = reducer.fit_transform(X)
+        return ridotto, "t-SNE"
+
+X_ridotto, metodo_riduzione = riduci_dimensionalita(X_scaled, riduzione_dim, random_state)
+
+# --- Clustering ---
+@st.cache_data
+def esegui_clustering(X, algoritmo, parametri):
+    if algoritmo == "K-Means":
+        model = KMeans(
+            n_clusters=parametri['n_clusters'],
+            max_iter=parametri['max_iter'],
+            random_state=42,
+            n_init='auto'
+        )
+        labels = model.fit_predict(X)
+        centers = model.cluster_centers_
+    else:  # DBSCAN
+        model = DBSCAN(
+            eps=parametri['eps'],
+            min_samples=parametri['min_samples']
+        )
+        labels = model.fit_predict(X)
+        centers = None
+    
+    return labels, model, centers
+
+parametri_algoritmo = {
+    "K-Means": {'n_clusters': n_clusters, 'max_iter': max_iter},
+    "DBSCAN": {'eps': eps, 'min_samples': min_samples}
+}
+
+labels, model, centers = esegui_clustering(X_scaled, algoritmo, parametri_algoritmo[algoritmo])
+
+# --- Metriche di Valutazione ---
+def calcola_metriche(X, labels):
+    metriche = {}
+    unique_labels = set(labels)
+    n_cluster_reali = len(unique_labels) - (1 if -1 in unique_labels else 0)
+
+    if n_cluster_reali > 1:
+        try:
+            metriche['Silhouette Score'] = silhouette_score(X, labels)
+            metriche['Davies-Bouldin Index'] = davies_bouldin_score(X, labels)
+            metriche['Calinski-Harabasz Index'] = calinski_harabasz_score(X, labels)
+        except:
+            pass
+    
+    unique, counts = np.unique(labels, return_counts=True)
+    metriche['Numero Cluster'] = n_cluster_reali
+    metriche['Punti Rumore'] = counts[unique == -1][0] if -1 in unique else 0
+    
+    return metriche
+
+metriche = calcola_metriche(X_scaled, labels)
+
+# --- Visualizzazione ---
+def crea_grafico_cluster(X, labels, centers, metodo, motore, df_originale):
+    plot_df = pd.DataFrame({
+        "x": X[:, 0],
+        "y": X[:, 1],
+        "cluster": labels,
+        "dimensione": df_originale["Spesa Media ($)"] / 10
+    })
+    
+    if motore == "Plotly":
+        fig = px.scatter(
+            plot_df, x="x", y="y", color="cluster",
+            size="dimensione", 
+            title=f"Segmentazione Clienti ({metodo})",
+            labels={"x": "Componente 1", "y": "Componente 2"}
+        )
+        
+        if centers is not None:
+            fig.add_scatter(
+                x=centers[:, 0], y=centers[:, 1],
+                mode="markers", marker=dict(size=12, color="black", symbol="x"),
+                name="Centri Cluster"
+            )
+        
+        return fig
+    else:
+        plt.figure(figsize=(10, 7))
+        plt.scatter(X[:, 0], X[:, 1], c=labels, s=df_originale["Spesa Media ($)"]/5)
+        if centers is not None:
+            plt.scatter(centers[:, 0], centers[:, 1], marker="X", s=200, c="red")
+        plt.title(f"Segmentazione Clienti ({metodo})")
+        plt.xlabel("Componente 1")
+        plt.ylabel("Componente 2")
+        return plt.gcf()
+
+grafico_cluster = crea_grafico_cluster(
+    X_ridotto, labels, centers, 
+    metodo_riduzione, motore_grafico, df
+)
+
+# --- Profilazione Cluster ---
+def profila_cluster(df, labels):
+    df_clusterizzato = df.copy()
+    df_clusterizzato["Cluster"] = labels
+    profili = df_clusterizzato.groupby("Cluster").mean()
+    return profili, df_clusterizzato
+
+profili_cluster, df_clusterizzato = profila_cluster(df, labels)
+
+# --- Interfaccia Principale ---
+tab1, tab2 = st.tabs(["📊 Visualizzazione", "📈 Analisi"])
+
+with tab1:
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        if motore_grafico == "Plotly":
+            st.plotly_chart(grafico_cluster, use_container_width=True)
+        else:
+            st.pyplot(grafico_cluster)
+            plt.close()
+    
+    with col2:
+        st.metric("Numero Cluster", metriche.get('Numero Cluster', 'N/A'))
+        st.metric("Punti Rumore", metriche.get('Punti Rumore', 0))
+        
+        if 'Silhouette Score' in metriche:
+            st.metric("Silhouette Score", f"{metriche['Silhouette Score']:.3f}")
+        if 'Davies-Bouldin Index' in metriche:
+            st.metric("Davies-Bouldin", f"{metriche['Davies-Bouldin Index']:.3f}")
+
+with tab2:
+    st.dataframe(profili_cluster.style.background_gradient(cmap="Blues"))
+    
+    feature_selezionata = st.selectbox("Seleziona feature", features)
+    
+    if motore_grafico == "Plotly":
+        fig = px.box(df_clusterizzato, x="Cluster", y=feature_selezionata)
+        st.plotly_chart(fig)
+    else:
+        plt.figure(figsize=(10, 5))
+        df_clusterizzato.boxplot(column=feature_selezionata, by="Cluster")
+        plt.suptitle("")
+        st.pyplot(plt.gcf())
+        plt.close()
+
+# --- Footer ---
 st.markdown("---")
-st.markdown("App creata con ❤️ per il corso di Machine Learning")
+st.markdown("*Strumento di Analisi Clienti* | Creato con Streamlit")
