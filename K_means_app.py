@@ -9,7 +9,6 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import plotly.express as px
 import io
-from scipy.cluster.hierarchy import dendrogram, linkage
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -34,22 +33,22 @@ with st.sidebar:
     
     st.subheader("2. Algorithm Selection")
     algorithm = st.radio("Clustering Algorithm:", 
-                         ["K-Means", "DBSCAN", "Hierarchical"], 
+                         ["K-Means", "DBSCAN", ""], 
                          index=0) # Default a K-Means
 
     # MODIFICA: Inizializza tutte le variabili dei parametri degli algoritmi con valori di default.
     # Questo risolve il NameError, assicurando che le variabili esistano sempre,
     # anche se i loro widget non sono visualizzati per l'algoritmo selezionato di default.
-    n_clusters = 6 # Default per K-Means e Hierarchical
+    n_clusters = 6 # Default per K-Means e 
     init_method = "k-means++" # Default per K-Means
     max_iter = 300 # Default per K-Means
     
     eps = 0.5 # Default per DBSCAN
     min_samples = 10 # Default per DBSCAN
-    metric = "euclidean" # Default per DBSCAN e Hierarchical (affinity)
+    metric = "euclidean" # Default per DBSCAN e  (affinity)
     
-    linkage_method = "ward" # Default per Hierarchical
-    affinity = "euclidean" # Default per Hierarchical
+    linkage_method = "ward" # Default per 
+    affinity = "euclidean" # Default per 
 
     if algorithm == "K-Means":
         n_clusters = st.slider("Number of clusters (K)", 2, 15, 6)
@@ -63,7 +62,7 @@ with st.sidebar:
         metric = st.selectbox("Distance metric", 
                                ["euclidean", "cosine", "manhattan"])
         
-    elif algorithm == "Hierarchical":
+    elif algorithm == "":
         n_clusters = st.slider("Number of clusters", 2, 15, 6)
         linkage_method = st.selectbox("Linkage method", 
                                         ["ward", "complete", "average", "single"])
@@ -257,7 +256,7 @@ def perform_clustering(X, algorithm, params, random_state):
     model = None
     centers = None
 
-    # MODIFICA: Aggiunto un controllo per X.shape[0] < n_clusters per K-Means e Hierarchical
+    # MODIFICA: Aggiunto un controllo per X.shape[0] < n_clusters per K-Means e 
     # E per DBSCAN, se ci sono troppi pochi punti o parametri assurdi.
     if X.shape[0] == 0:
         st.warning("No data points to cluster. Please increase 'Number of simulated customers'.")
@@ -293,9 +292,9 @@ def perform_clustering(X, algorithm, params, random_state):
             # DBSCAN non ha centri di cluster espliciti come K-Means
             centers = None 
         
-    elif algorithm == "Hierarchical":
+    elif algorithm == "":
         if params['n_clusters'] >= X.shape[0]:
-            st.warning(f"Hierarchical: Number of clusters ({params['n_clusters']}) must be less than the number of samples ({X.shape[0]}). Defaulting to 1 cluster.")
+            st.warning(f": Number of clusters ({params['n_clusters']}) must be less than the number of samples ({X.shape[0]}). Defaulting to 1 cluster.")
             labels = np.zeros(X.shape[0], dtype=int)
             # Non ci sono centri espliciti
             centers = None
@@ -322,7 +321,7 @@ algo_params = {
         'min_samples': min_samples,
         'metric': metric
     },
-    "Hierarchical": {
+    "": {
         'n_clusters': n_clusters,
         'affinity': affinity,
         'linkage_method': linkage_method
@@ -501,7 +500,7 @@ cluster_plot = create_cluster_plot(
     X_reduced, labels, 
     # MODIFICA: I centri sono visualizzabili solo se sono disponibili e la riduzione non è t-SNE
     # e se X_reduced ha le stesse dimensioni dei centri (caso più comune per K-Means su dati ridotti).
-    # Per DBSCAN e Hierarchical non ci sono centri espliciti.
+    # Per DBSCAN e  non ci sono centri espliciti.
     centers if algorithm == "K-Means" and dim_reduction != "t-SNE" else None, 
     reduction_method,
     plot_engine,
@@ -697,7 +696,7 @@ with tab4:
     - Discover hidden patterns in customer behavior
     
     **Key Features:**
-    - Three clustering algorithms (K-Means, DBSCAN, Hierarchical)
+    - Three clustering algorithms (K-Means, DBSCAN, )
     - Multiple dimensionality reduction techniques
     - Interactive visualizations with Plotly
     - Comprehensive cluster profiling
@@ -733,7 +732,7 @@ with tab4:
     - Identifies noise points
     - Requires tuning epsilon and min_samples
     
-    **Hierarchical**:
+    ****:
     - Creates nested cluster hierarchy
     - Can use different linkage methods
     - Useful for understanding data structure
