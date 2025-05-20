@@ -133,24 +133,11 @@ else:
     X_ridotto = reducer.fit_transform(X)
     metodo_riduzione = "t-SNE"
 
-# Creiamo un DataFrame per il plotting
-plot_df = pd.DataFrame({
-    "Componente_1": X_ridotto[:, 0],
-    "Componente_2": X_ridotto[:, 1]
-})
-
-# Aggiungiamo le features selezionate per l'hover
-for feature in features_selezionate:
-    plot_df[feature] = df[feature]
-
 # Clustering
 if algoritmo == "K-Means":
     model = KMeans(n_clusters=n_clusters, max_iter=max_iter, n_init='auto')
     labels = model.fit_predict(X)
     centers = scaler.inverse_transform(model.cluster_centers_)
-    
-    # Aggiungiamo le etichette al DataFrame per il plotting
-    plot_df["Cluster"] = labels.astype(str)
     
     # Visualizzazione evoluzione iterazioni
     if 'n_iter_viz' in locals():
@@ -189,13 +176,26 @@ else:
     model = DBSCAN(eps=eps, min_samples=min_samples)
     labels = model.fit_predict(X)
     centers = None
-    plot_df["Cluster"] = labels.astype(str)
 
-# Calcolo metriche
-if len(set(labels)) > 1 and -1 not in set(labels):
-    silhouette = silhouette_score(X, labels)
-else:
-    silhouette = "N/A"
+# Calcolo metriche con gestione degli errori
+try:
+    if len(np.unique(labels)) > 1 and -1 not in np.unique(labels):
+        silhouette = silhouette_score(X, labels)
+    else:
+        silhouette = None
+except ValueError:
+    silhouette = None
+
+# Creazione DataFrame per plotting
+plot_df = pd.DataFrame({
+    "Componente_1": X_ridotto[:, 0],
+    "Componente_2": X_ridotto[:, 1],
+    "Cluster": labels.astype(str)
+})
+
+# Aggiunta delle features selezionate per l'hover
+for feature in features_selezionate:
+    plot_df[feature] = df[feature]
 
 # Visualizzazione
 tab1, tab2, tab3 = st.tabs(["📊 Risultati", "📈 Analisi", "❓ Guida"])
@@ -206,7 +206,7 @@ with tab1:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Plot cluster con Plotly Express
+        # Plot cluster con gestione degli errori
         try:
             fig = px.scatter(
                 plot_df,
@@ -224,14 +224,25 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f"Errore nella creazione del grafico: {str(e)}")
-            st.write("Dati per il grafico:")
-            st.write(plot_df.head())
+            # Fallback a matplotlib
+            fig, ax = plt.subplots()
+            scatter = ax.scatter(X_ridotto[:, 0], X_ridotto[:, 1], c=labels, cmap='viridis')
+            ax.set_title(f"Risultati Clustering ({metodo_riduzione})")
+            ax.set_xlabel("Componente 1")
+            ax.set_ylabel("Componente 2")
+            plt.colorbar(scatter, ax=ax, label='Cluster')
+            st.pyplot(fig)
     
     with col2:
         st.subheader("Metriche")
-        st.metric("Silhouette Score", 
-                 f"{silhouette:.3f}" if silhouette != "N/A" else "N/A",
-                 help="Valore tra -1 e 1, più alto è meglio")
+        if silhouette is not None:
+            st.metric("Silhouette Score", 
+                     f"{silhouette:.3f}",
+                     help="Valore tra -1 e 1, più alto è meglio")
+        else:
+            st.metric("Silhouette Score", 
+                     "N/A",
+                     help="Non calcolabile (singolo cluster o solo rumore)")
         
         st.subheader("Distribuzione Cluster")
         cluster_counts = pd.Series(labels).value_counts().sort_index()
