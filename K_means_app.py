@@ -122,20 +122,3 @@ print(f"\nSilhouette Score: {silhouette_avg:.3f}")
 # - Quando usare K-Means?
 # - K-Means è un algoritmo deterministico? (No, per l'inizializzazione casuale)
 
----
-
-### Prossimi Passi per te:
-
-1.  **Scegliere un Dataset:** Decidi se usare un dataset generato (`make_blobs`) o uno reale (es. Iris, o un dataset più grande per l'analisi clienti se ne hai uno in mente). L'Iris è un classico, anche se è un dataset di classificazione, si presta bene per dimostrare il clustering.
-2.  **Inizia il Codice Streamlit:**
-    * Crea un file `app.py`.
-    * Installa `streamlit` (`pip install streamlit`).
-    * Inizia a mettere il codice Python che ti ho fornito dentro `app.py`, adattandolo per Streamlit (es. `st.write`, `st.pyplot`, `st.sidebar` per input dell'utente).
-3.  **Visualizzazione delle Iterazioni (Il punto più "difficile" ma interessante):**
-    * Per mostrare davvero i "primi 10 passaggi di iterazione", dovresti implementare una versione molto semplificata del K-Means *da zero* (senza `sklearn.cluster.KMeans` per l'addestramento, ma puoi comunque usare le funzioni di scikit-learn per la distanza e l'assegnazione se vuoi). Questo ti permetterebbe di salvare lo stato dei centroidi e delle assegnazioni dopo ogni iterazione e visualizzarli.
-    * **Alternativa più semplice:** Nel PowerPoint e in Streamlit, potresti *spiegare* le iterazioni concettualmente come ho fatto sopra, mostrando solo il risultato finale dell'algoritmo di `sklearn`, ma enfatizzando che questo risultato è raggiunto attraverso iterazioni progressive. Per l'esame, la spiegazione concettuale di cosa succede in ogni iterazione è più importante della visualizzazione grafica esatta di ogni singolo micro-passaggio se l'implementazione diventa troppo complessa.
-4.  **Prepara il PowerPoint:** Inizia a delineare le slide seguendo la struttura che ti ho suggerito. Includi grafici (come il metodo del gomito e la visualizzazione dei cluster) che genererai con il tuo codice Python.
-5.  **GitHub:** Crea un repository GitHub e carica il tuo codice `app.py` e qualsiasi altro file necessario (es. i dati se usi un file CSV).
-6.  **Streamlit Cloud:** Una volta che hai il codice su GitHub, puoi collegarlo a Streamlit Cloud per deployare la tua app.
-
-Se hai domande specifiche su un punto, ad esempio "Come faccio a far scegliere il numero di cluster all'utente in Streamlit?" o "Come visualizzo il metodo del gomito in Streamlit?", chiedi pure! Sono qui per aiutarti passo dopo passo.
