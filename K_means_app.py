@@ -26,35 +26,50 @@ def generate_data(dataset_type, n_samples, noise, random_state, n_blobs_centers=
     if dataset_type == "Clienti con Abitudini Chiare (Segmenti Distinti)":
         X, y_true = make_blobs(n_samples=n_samples, centers=n_blobs_centers, cluster_std=0.6,
                                random_state=random_state)
+        # Scale back to more intuitive marketing ranges before standardizing
+        X[:, 0] = X[:, 0] * 2 + 5 # Frequency: 1-10
+        X[:, 1] = X[:, 1] * 100 + 300 # Avg Cart Value: 100-1000
     elif dataset_type == "Clienti con Varianza Alta (Sovrapposizione)":
         X, y_true = make_blobs(n_samples=n_samples, centers=n_blobs_centers, cluster_std=blob_std if blob_std > 0 else 1.5,
                                random_state=random_state)
+        X[:, 0] = X[:, 0] * 3 + 7 # Interactions: 1-20
+        X[:, 1] = X[:, 1] * 50 + 150 # Cart Size: 50-500
     elif dataset_type == "Clienti Fedeli vs. Nuovi (Comportamento su Piattaforme)":
         X, y_true = make_moons(n_samples=n_samples, noise=noise, random_state=random_state)
+        X[:, 0] = X[:, 0] * 100 + 200 # Time on App: 50-400 mins
+        X[:, 1] = X[:, 1] * 5 + 3 # Monthly Logins: 1-10
     elif dataset_type == "Livelli di Spesa/Engagement (Cerchi Concentrici)":
         X, y_true = make_circles(n_samples=n_samples, factor=0.5, noise=noise, random_state=random_state)
+        X[:, 0] = X[:, 0] * 1000 + 1500 # Annual Spend: 500-3000
+        X[:, 1] = X[:, 1] * 200 + 250 # Loyalty Points: 0-500
     elif dataset_type == "Clienti con Pattern Anisotropi (Comportamento Complesso)": # Challenging for K-Means default
         transformation = [[0.6, -0.6], [-0.4, 0.8]]
         X_aniso, _ = make_blobs(n_samples=n_samples, centers=n_blobs_centers, random_state=random_state, cluster_std=0.7)
         X = np.dot(X_aniso, transformation)
+        X[:, 0] = X[:, 0] * 5 + 10 # Social Interactions: 0-30
+        X[:, 1] = X[:, 1] * 2 + 1 # Product Reviews: 0-5
         y_true = None # True labels are harder to map after transformation for simple demo
     elif dataset_type == "Dati di Mercato Senza Struttura Evidente (Random)":
         X = np.random.rand(n_samples, 2) * 10 # Spread out points
         y_true = None
         
+    # Store unscaled data for display
+    X_unscaled = X.copy()
+    
     # Standard Scaler - Essential for many algorithms, especially K-Means for distance calculations
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    return X_scaled, y_true
+    return X_scaled, X_unscaled, y_true
+
 
 # --- Mapping per Nomi Features Marketing ---
 feature_names_mapping = {
-    "Clienti con Abitudini Chiare (Segmenti Distinti)": {"x": "Frequenza Acquisti (Scalata)", "y": "Valore Medio Carrello (Scalata)"},
-    "Clienti con Varianza Alta (Sovrapposizione)": {"x": "Interazioni Settimanali (Scalata)", "y": "Dimensione Media Carrello (Scalata)"},
-    "Clienti Fedeli vs. Nuovi (Comportamento su Piattaforme)": {"x": "Tempo Totale su App/Sito (Scalata)", "y": "Numero Accessi Mensili (Scalata)"},
-    "Livelli di Spesa/Engagement (Cerchi Concentrici)": {"x": "Spesa Totale Annua (Scalata)", "y": "Punti Fedeltà Guadagnati (Scalata)"},
-    "Clienti con Pattern Anisotropi (Comportamento Complesso)": {"x": "Interazioni Social Media (Scalata)", "y": "Recensioni Prodotti Scritte (Scalata)"},
-    "Dati di Mercato Senza Struttura Evidente (Random)": {"x": "Metrica Demografica A (Scalata)", "y": "Metrica Comportamentale B (Scalata)"}
+    "Clienti con Abitudini Chiare (Segmenti Distinti)": {"x": "Frequenza Acquisti", "y": "Valore Medio Carrello"},
+    "Clienti con Varianza Alta (Sovrapposizione)": {"x": "Interazioni Settimanali", "y": "Dimensione Media Carrello"},
+    "Clienti Fedeli vs. Nuovi (Comportamento su Piattaforme)": {"x": "Tempo Totale su App/Sito", "y": "Numero Accessi Mensili"},
+    "Livelli di Spesa/Engagement (Cerchi Concentrici)": {"x": "Spesa Totale Annua", "y": "Punti Fedeltà Guadagnati"},
+    "Clienti con Pattern Anisotropi (Comportamento Complesso)": {"x": "Interazioni Social Media", "y": "Recensioni Prodotti Scritte"},
+    "Dati di Mercato Senza Struttura Evidente (Random)": {"x": "Metrica Demografica A", "y": "Metrica Comportamentale B"}
 }
 
 
@@ -76,7 +91,7 @@ with st.sidebar:
     n_samples_data = st.slider("Numero di 'Clienti' (Punti Dati)", 100, 1500, 300, step=50)
     
     # Dataset specific parameters
-    if "Clienti" in dataset_type and "Abitudini Chiare" in dataset_type or "Varianza Alta" in dataset_type:
+    if "Clienti" in dataset_type and ("Abitudini Chiare" in dataset_type or "Varianza Alta" in dataset_type):
         n_centers_blobs = st.slider("Numero di Segmenti/Centri Desiderati", 2, 5, 3)
         if "Varianza Alta" in dataset_type:
              blob_std_param = st.slider("Deviazione Standard dei Segmenti (Dispersion)", 0.5, 3.0, 1.8, step=0.1)
@@ -111,7 +126,7 @@ with st.sidebar:
                                      help="Numero minimo di 'clienti' in un vicinato per formare un segmento denso. I punti sotto questa soglia potrebbero essere considerati rumore.")
 
 # --- Generazione Dati ---
-X_data, y_true_data = generate_data(dataset_type, n_samples_data,
+X_data_scaled, X_data_unscaled, y_true_data = generate_data(dataset_type, n_samples_data,
                                     noise_level if 'noise_level' in locals() else 0.05,
                                     random_state_ds,
                                     n_centers_blobs if 'n_centers_blobs' in locals() else 3,
@@ -147,6 +162,16 @@ elif dataset_type == "Dati di Mercato Senza Struttura Evidente (Random)":
     """)
 st.markdown("---")
 
+# --- Visualizzazione del Dataset Completo ---
+with st.expander("📊 Visualizza il Dataset Completo dei 'Clienti' (Dati Originali)"):
+    current_x_label_orig = feature_names_mapping.get(dataset_type, {}).get("x", "Feature 1")
+    current_y_label_orig = feature_names_mapping.get(dataset_type, {}).get("y", "Feature 2")
+    
+    df_display = pd.DataFrame(X_data_unscaled, columns=[current_x_label_orig, current_y_label_orig])
+    st.write(f"Ecco un'anteprima dei primi 10 'clienti' del dataset '{dataset_type}' con le loro caratteristiche originali:")
+    st.dataframe(df_display.head(10))
+    st.info("Nota: Gli algoritmi di clustering lavorano su versioni 'scalate' di questi dati per garantire che tutte le caratteristiche abbiano la stessa importanza, indipendentemente dalla loro scala originale.")
+
 st.header(f"🚀 Esecuzione e Risultati: {algoritmo_scelto}")
 
 # --- Esecuzione Clustering ---
@@ -159,13 +184,13 @@ silhouette_avg = None
 
 if algoritmo_scelto == "K-Means":
     kmeans_model = KMeans(n_clusters=k_clusters_param, random_state=kmeans_random_state_param, n_init='auto')
-    labels_pred = kmeans_model.fit_predict(X_data)
+    labels_pred = kmeans_model.fit_predict(X_data_scaled) # Use scaled data here
     cluster_centers_coords = kmeans_model.cluster_centers_
     n_clusters_found_val = len(set(labels_pred))
     inertia_val = kmeans_model.inertia_
 elif algoritmo_scelto == "DBSCAN":
     dbscan_model = DBSCAN(eps=eps_param, min_samples=min_samples_param)
-    labels_pred = dbscan_model.fit_predict(X_data)
+    labels_pred = dbscan_model.fit_predict(X_data_scaled) # Use scaled data here
     unique_labels_set = set(labels_pred)
     n_clusters_found_val = len(unique_labels_set) - (1 if -1 in unique_labels_set else 0)
     n_noise_points = list(labels_pred).count(-1)
@@ -173,7 +198,7 @@ elif algoritmo_scelto == "DBSCAN":
 # Calcola Silhouette Score se ci sono cluster validi (più di 1 cluster e non tutti rumore)
 if len(set(labels_pred)) > 1 and (len(set(labels_pred)) > 1 or (algoritmo_scelto == "DBSCAN" and -1 not in set(labels_pred))):
     try:
-        silhouette_avg = silhouette_score(X_data, labels_pred)
+        silhouette_avg = silhouette_score(X_data_scaled, labels_pred) # Use scaled data for silhouette
     except ValueError: # Happens if only one cluster is found, or all points are noise
         silhouette_avg = None
 else:
@@ -211,7 +236,7 @@ with col1_plot:
         point_size_plot = 40 if label_val_plot == -1 else 60
         plot_legend_label = f'Clienti Rumore/Outlier (-1)' if label_val_plot == -1 else f'Segmento {label_val_plot}'
 
-        ax_cluster.scatter(X_data[mask_plot, 0], X_data[mask_plot, 1],
+        ax_cluster.scatter(X_data_scaled[mask_plot, 0], X_data_scaled[mask_plot, 1], # Use scaled data for plot
                            facecolor=current_color_plot, marker=marker_style_plot, s=point_size_plot,
                            label=plot_legend_label, alpha=0.8,
                            edgecolor='k' if label_val_plot !=-1 else 'none', linewidth=0.5 if label_val_plot !=-1 else 0)
@@ -221,13 +246,13 @@ with col1_plot:
                            marker='P', s=250, facecolor='red', label='Centroide Segmento',
                            edgecolor='black', linewidth=1.5, zorder=10)
 
-    # Dynamic Axis Labels
-    current_x_label = feature_names_mapping.get(dataset_type, {}).get("x", "Feature 1 (Scalata)")
-    current_y_label = feature_names_mapping.get(dataset_type, {}).get("y", "Feature 2 (Scalata)")
+    # Dynamic Axis Labels for scaled plot
+    current_x_label_scaled = feature_names_mapping.get(dataset_type, {}).get("x", "Feature 1") + " (Scalata)"
+    current_y_label_scaled = feature_names_mapping.get(dataset_type, {}).get("y", "Feature 2") + " (Scalata)"
 
     ax_cluster.set_title(f'Segmentazione Clienti: {dataset_type} con {algoritmo_scelto}')
-    ax_cluster.set_xlabel(current_x_label)
-    ax_cluster.set_ylabel(current_y_label)
+    ax_cluster.set_xlabel(current_x_label_scaled)
+    ax_cluster.set_ylabel(current_y_label_scaled)
     ax_cluster.legend(loc='best', fontsize='small')
     ax_cluster.grid(True, linestyle='--', alpha=0.6)
     st.pyplot(fig_cluster)
@@ -300,7 +325,7 @@ with st.expander("🔬 DBSCAN: Come Identifica i Segmenti e gli Outlier?"):
 
     **Quando usarlo nel Marketing?**
     * Quando non sai **quanti segmenti** esistono nella tua base clienti.
-    * Per identificare **segmenti di clienti con forme e dimensioni complesse** (es. clienti che seguono un percorso di acquisto a "U" o a "S").
+    * Per trovare **segmenti di clienti con forme e dimensioni complesse** (es. clienti che seguono un percorso di acquisto a "U" o a "S").
     * Per individuare facilmente i **clienti outlier** (es. acquirenti fraudolenti, clienti con comportamenti estremamente inusuali) che necessitano di attenzione speciale o esclusione da certe campagne.
     * Utile per segmentare dati geolocalizzati o pattern di navigazione web.
 
