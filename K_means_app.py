@@ -20,6 +20,7 @@ Modifica i parametri per vedere quali pattern di clienti emergono!
 """)
 
 # --- Funzione per Generare Dati Sintetici per Marketing (Supermercato) ---
+@st.cache_data # Aggiunto il decoratore per la caching dei dati
 def generate_customer_data(n_samples, random_state):
     np.random.seed(random_state)
 
@@ -368,6 +369,7 @@ with col1_plot:
     ax_cluster.legend(loc='best', fontsize='small')
     ax_cluster.grid(True, linestyle='--', alpha=0.6)
     st.pyplot(fig_cluster)
+    plt.close(fig_cluster) # Close the figure to free memory
 
 with col2_metrics:
     st.subheader("Metriche dei Segmenti")
@@ -459,17 +461,14 @@ if len(set(labels_pred)) > 0:
         * La **Deviazione Standard (Std Dev)** indica la variabilità all'interno del segmento per quella caratteristica: una Std Dev bassa significa che i clienti sono molto simili per quella caratteristica, una alta indica più eterogeneità.
         """)
         
-        # FIX START HERE
         st.subheader(f"Visualizzazione delle Medie delle Caratteristiche per il {cluster_to_show}")
         mean_features_for_single_cluster = {k.replace('Media ', ''): v for k, v in profile_data.items() if 'Media ' in k}
         
-        # Convert the dictionary to a pandas Series, then to a DataFrame for st.bar_chart
-        # This ensures feature names are the index, and values are in a single column
+        # Corrected way to prepare DataFrame for st.bar_chart for a single cluster
         df_for_bar_chart = pd.DataFrame(mean_features_for_single_cluster.items(), columns=['Caratteristica', 'Valore Medio'])
         df_for_bar_chart = df_for_bar_chart.set_index('Caratteristica')
         
-        st.bar_chart(df_for_bar_chart) # Pass the correctly structured DataFrame
-        # FIX END HERE
+        st.bar_chart(df_for_bar_chart) 
 
         st.info("Questo grafico a barre evidenzia i valori medi delle caratteristiche per il segmento selezionato. Osserva quali caratteristiche hanno valori particolarmente alti o bassi per questo segmento rispetto agli altri.")
 else:
