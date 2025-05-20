@@ -4,415 +4,271 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler
-
-# --- NEW CUSTOM DATA GENERATOR BASED ON USER'S SCRIPT ---
-def generate_custom_customer_data(n_customers, random_seed, bb_ratio=0.15):
-    np.random.seed(random_seed)
-
-    n_bb = int(n_customers * bb_ratio)
-    n_non_bb = n_customers - n_bb
-
-    # Bodybuilder
-    bb_data = pd.DataFrame({
-        'ID_Cliente': [f'BB{i+1:04d}' for i in range(n_bb)], # Renamed customer_id to ID_Cliente
-        'is_bodybuilder': 1,
-        'protein_spending': np.random.normal(180, 30, n_bb),
-        'supplements_spending': np.random.normal(100, 20, n_bb),
-        'carb_spending': np.random.normal(80, 15, n_bb),
-        'total_visits_per_month': np.random.randint(8, 16, n_bb),
-        'avg_basket_size': np.random.normal(25, 5, n_bb),
-        'purchase_time_slot': np.random.choice([1, 2], n_bb, p=[0.3, 0.7]) # 1: PM, 2: Sera
-    })
-
-    # Non bodybuilder
-    non_bb_data = pd.DataFrame({
-        'ID_Cliente': [f'NB{i+1:04d}' for i in range(n_non_bb)], # Renamed customer_id to ID_Cliente
-        'is_bodybuilder': 0,
-        'protein_spending': np.random.normal(60, 20, n_non_bb),
-        'supplements_spending': np.random.normal(10, 5, n_non_bb),
-        'carb_spending': np.random.normal(100, 20, n_non_bb),
-        'total_visits_per_month': np.random.randint(3, 10, n_non_bb),
-        'avg_basket_size': np.random.normal(15, 5, n_non_bb),
-        'purchase_time_slot': np.random.choice([0, 1, 2], n_non_bb, p=[0.4, 0.4, 0.2]) # 0: AM, 1: PM, 2: Sera
-    })
-
-    df = pd.concat([bb_data, non_bb_data]).sample(frac=1, random_state=random_seed).reset_index(drop=True) # Shuffle data
-
-    # Pulizia (no valori negativi)
-    cols_to_clip = ['protein_spending', 'supplements_spending', 'carb_spending', 'avg_basket_size']
-    for col in cols_to_clip:
-        if col in df.columns: # Ensure column exists before clipping
-            df[col] = df[col].clip(lower=0)
-            
-    return df
+from sklearn.datasets import make_blobs, make_moons, make_circles
+from sklearn.metrics import silhouette_score
 
 # --- Configurazione Pagina ---
-st.set_page_config(layout="wide", page_title="MarketPro: Individuazione Clienti Target")
+st.set_page_config(layout="wide", page_title="Visualizzatore Algoritmi di Clustering")
 
 # --- Titolo e Introduzione ---
-st.title("🎯 MarketPro: Individuazione Avanzata Cluster Clienti")
+st.title("🔬 Visualizzatore Interattivo di Algoritmi di Clustering")
 st.markdown("""
-Benvenuti nell'analisi avanzata di **MarketPro**! Utilizzeremo i dati simulati dei clienti per identificare specifici pattern di acquisto.
-L'obiettivo è segmentare la clientela per strategie di marketing mirate, con un focus sull'individuazione di nicchie di valore come **bodybuilder/appassionati di fitness**.
-Esploreremo come **K-Means** e **DBSCAN** possono aiutarci, basandoci sulle feature da voi selezionate.
+Questa applicazione ti permette di esplorare il funzionamento degli algoritmi di clustering **K-Means** e **DBSCAN**
+su diversi tipi di dataset sintetici. Modifica i parametri del dataset e dell'algoritmo per vedere come cambiano i risultati!
 """)
 
-st.info("💡 **Obiettivo Specifico**: Isolare gruppi di clienti (es. bodybuilder) analizzando le loro abitudini di acquisto. Ad esempio, i bodybuilder dovrebbero mostrare alta spesa in proteine e integratori, e bassa in altre categorie (non modellate qui ma implicite).")
+# --- Funzione per Generare Dati Sintetici ---
+def generate_data(dataset_type, n_samples, noise, random_state, n_blobs_centers=3, blob_std=1.0):
+    X = np.array([[]]) # Initialize X
+    y_true = None # True labels, useful for some datasets but not directly used by clustering
 
-# --- Lista di tutte le feature disponibili per il clustering (escluso ID) ---
-ALL_POSSIBLE_FEATURES_FOR_CLUSTERING = [
-    'protein_spending', 'supplements_spending', 'carb_spending',
-    'total_visits_per_month', 'avg_basket_size', 'purchase_time_slot',
-    'is_bodybuilder' # Ground truth label, use with caution for discovery
-]
-ALL_POSSIBLE_FEATURES_FOR_CLUSTERING.sort()
+    if dataset_type == "Blobs Ben Separati":
+        X, y_true = make_blobs(n_samples=n_samples, centers=n_blobs_centers, cluster_std=0.6,
+                               random_state=random_state)
+    elif dataset_type == "Blobs Misti (Varianza Alta)":
+        X, y_true = make_blobs(n_samples=n_samples, centers=n_blobs_centers, cluster_std=blob_std if blob_std > 0 else 1.5,
+                               random_state=random_state)
+    elif dataset_type == "Lune (Moons)":
+        X, y_true = make_moons(n_samples=n_samples, noise=noise, random_state=random_state)
+    elif dataset_type == "Cerchi Concentrici (Circles)":
+        X, y_true = make_circles(n_samples=n_samples, factor=0.5, noise=noise, random_state=random_state)
+    elif dataset_type == "Dati Anisotropi (Ellittici)": # Challenging for K-Means default
+        transformation = [[0.6, -0.6], [-0.4, 0.8]]
+        X_aniso, _ = make_blobs(n_samples=n_samples, centers=n_blobs_centers, random_state=random_state, cluster_std=0.7)
+        X = np.dot(X_aniso, transformation)
+        y_true = None # True labels are harder to map after transformation for simple demo
+    elif dataset_type == "Nessuna Struttura Evidente (Random)":
+        X = np.random.rand(n_samples, 2) * 10 # Spread out points
+        y_true = None
+        
+    # Standard Scaler
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, y_true
 
 
 # --- Sidebar per Controlli Globali ---
 with st.sidebar:
-    st.header("⚙️ Impostazioni Simulazione Dati")
-    n_samples = st.slider("Numero di Clienti Simulati", 100, 2000, 500, help="Quanti profili cliente generare.")
-    random_state_data = st.slider("Seed per Generazione Dati", 0, 100, 42, help="Controlla la riproducibilità dei dati generati.")
+    st.header("⚙️ Configurazione Esperimento")
 
-    st.header("📊 Selezione Feature per Clustering")
-    st.markdown("Seleziona da 1 a 10 features per l'analisi. L'ID Cliente è escluso.")
+    st.subheader("1. Scegli il Dataset Sintetico")
+    dataset_options = [
+        "Blobs Ben Separati", "Blobs Misti (Varianza Alta)", "Lune (Moons)",
+        "Cerchi Concentrici (Circles)", "Dati Anisotropi (Ellittici)", "Nessuna Struttura Evidente (Random)"
+    ]
+    dataset_type = st.selectbox("Tipo di Dataset:", dataset_options)
 
-    default_features = ['protein_spending', 'supplements_spending', 'carb_spending', 'total_visits_per_month']
-    default_selection = [f for f in default_features if f in ALL_POSSIBLE_FEATURES_FOR_CLUSTERING]
+    n_samples_data = st.slider("Numero di Punti Dati", 100, 1500, 300, step=50)
+    
+    # Dataset specific parameters
+    if "Blobs" in dataset_type:
+        n_centers_blobs = st.slider("Numero di Centri (Blobs)", 2, 5, 3)
+        if dataset_type == "Blobs Misti (Varianza Alta)":
+             blob_std_param = st.slider("Deviazione Standard Blobs", 0.5, 3.0, 1.8, step=0.1)
+        else:
+            blob_std_param = 0.6 # Fixed for well-separated
+    elif dataset_type in ["Lune (Moons)", "Cerchi Concentrici (Circles)"]:
+        noise_level = st.slider("Livello di Rumore Dataset", 0.01, 0.3, 0.05, step=0.01)
+    else: # For Anisotropic, Random
+        noise_level = 0.05 # Dummy, not directly used by all generators in the same way
+        n_centers_blobs = 3 # Used by anisotropic
+        blob_std_param = 1.0 # Dummy
 
-    selected_features = st.multiselect(
-        "Scegli le feature per l'analisi di clustering:",
-        options=ALL_POSSIBLE_FEATURES_FOR_CLUSTERING,
-        default=default_selection,
-        max_selections=10, # Max 10 features as per original request
-        help="Seleziona le feature per il clustering. 'ID_Cliente' è escluso."
-    )
-
-    if not selected_features:
-        st.warning("Per favore, seleziona almeno una feature per il clustering.")
-        st.stop()
-
-    if 'is_bodybuilder' in selected_features:
-        st.warning("⚠️ Hai selezionato 'is_bodybuilder' per il clustering. Questa è la variabile target (ground truth). Includerla aiuterà l'algoritmo a 'trovare' i bodybuilder facilmente, ma non rappresenta uno scenario di scoperta reale. Per una vera scoperta, deselezionala.")
-
-
-    features_for_clustering = selected_features
-
-    st.markdown("---")
-    st.subheader("💡 Suggerimento Algoritmo:")
-    num_feat = len(features_for_clustering)
-    if num_feat <= 4:
-        st.markdown(f"Con **{num_feat}** feature(s), **K-Means** potrebbe essere un buon punto di partenza se ti aspetti cluster sferici e conosci approssimativamente il numero di segmenti (K).")
-        st.markdown("**DBSCAN** è utile se cerchi cluster di forme arbitrarie o vuoi identificare automaticamente outliers/nicchie dense.")
-    else:
-        st.markdown(f"Con **{num_feat}** feature(s), la dimensionalità aumenta. **DBSCAN** può essere più efficace nell'identificare cluster basati sulla densità e forme complesse, oltre a gestire il rumore.")
-        st.markdown("**K-Means** è ancora utilizzabile, ma la 'maledizione della dimensionalità' potrebbe renderne i risultati meno intuitivi. Assicurati che K sia scelto con cura.")
-    st.markdown("*Questo è solo un suggerimento generico. La scelta migliore dipende dalla natura specifica dei tuoi dati e dagli obiettivi.*")
+    random_state_ds = st.slider("Seed Generazione Dati", 0, 100, 42)
     st.markdown("---")
 
-    st.header("🔬 Scegli l'Algoritmo di Clustering")
+    st.subheader("2. Scegli l'Algoritmo di Clustering")
     algoritmo_scelto = st.radio(
-        "Quale algoritmo vuoi esplorare?",
-        ("K-Means", "DBSCAN")
+        "Algoritmo:", ("K-Means", "DBSCAN"), horizontal=True
     )
-
     st.markdown("---")
 
+    st.subheader(f"3. Parametri {algoritmo_scelto}")
     if algoritmo_scelto == "K-Means":
-        st.subheader("Parametri K-Means")
-        # Suggest K=2 if 'is_bodybuilder' is not used, as we know there are two main groups
-        suggested_k = 2 if 'is_bodybuilder' not in features_for_clustering else len(features_for_clustering) + 1
-        k_clusters = st.slider("Numero di Gruppi (K)", 2, 10, suggested_k, help="Il numero di cluster che K-Means cercherà di formare.")
-        kmeans_random_state = st.slider("Seed per K-Means", 0, 100, 1, help="Controlla l'inizializzazione dei centroidi.")
-        st.write("*(K-Means divide i dati in K cluster compatti)*")
-
+        k_clusters_param = st.slider("Numero di Cluster (K)", 1, 10, 3,
+                                     help="Quanti gruppi l'algoritmo K-Means cercherà.")
+        kmeans_random_state_param = st.slider("Seed K-Means (per inizializzazione)", 0, 100, 1,
+                                              help="Controlla l'inizializzazione dei centroidi per la riproducibilità.")
     elif algoritmo_scelto == "DBSCAN":
-        st.subheader("Parametri DBSCAN")
-        eps = st.slider("Epsilon (eps)", 0.1, 3.0, 0.8, step=0.05, help="Raggio massimo per considerare i punti come 'vicini'.") # Adjusted range for new data
-        min_samples_dbscan = st.slider("Min Samples", 2, 30, 5, help="Numero minimo di punti per formare un cluster denso.")
-        st.write("*(DBSCAN raggruppa punti in base alla densità e identifica il rumore)*")
-
-    st.markdown("---")
-    st.caption("App sviluppata per MarketPro - Analisi Dati Clienti")
+        eps_param = st.slider("Epsilon (eps)", 0.05, 2.0, 0.2, step=0.01, # Adjusted range for scaled data
+                              help="Raggio massimo per considerare i punti come vicini.")
+        min_samples_param = st.slider("Min Samples", 1, 30, 5,
+                                     help="Numero minimo di punti in un intorno per formare un cluster denso.")
 
 # --- Generazione Dati ---
-# customer_df_full will contain ID_Cliente and all features generated by generate_custom_customer_data
-customer_df_full = generate_custom_customer_data(n_samples, random_state_data)
+X_data, y_true_data = generate_data(dataset_type, n_samples_data,
+                                    noise_level if 'noise_level' in locals() else 0.05,
+                                    random_state_ds,
+                                    n_centers_blobs if 'n_centers_blobs' in locals() else 3,
+                                    blob_std_param if 'blob_std_param' in locals() else 1.0)
 
-# customer_data_for_clustering will contain only the features selected by the user
-customer_data_for_clustering = customer_df_full[features_for_clustering].copy()
+# --- Visualizzazione Dati Originali (Opzionale) ---
+# with st.expander("Visualizza Dati Generati (Prima del Clustering)"):
+#     fig_orig, ax_orig = plt.subplots(figsize=(8, 6))
+#     ax_orig.scatter(X_data[:, 0], X_data[:, 1], c='gray', alpha=0.6)
+#     ax_orig.set_title(f"Dataset: {dataset_type} (Dati Scalati)")
+#     ax_orig.set_xlabel("Feature 1 (Scalata)")
+#     ax_orig.set_ylabel("Feature 2 (Scalata)")
+#     ax_orig.grid(True, linestyle='--', alpha=0.7)
+#     st.pyplot(fig_orig)
 
+st.header(f"🚀 Esecuzione e Risultati: {algoritmo_scelto}")
 
-st.subheader("📊 Panoramica dei Dati Clienti Simulati")
-st.write(f"Dataset generato con {n_samples} clienti. Di seguito un estratto con tutte le colonne generate:")
-st.dataframe(customer_df_full.head())
+# --- Esecuzione Clustering ---
+labels_pred = []
+cluster_centers_coords = None
+n_clusters_found_val = 0
+inertia_val = None
+n_noise_points = 0
+silhouette_avg = None
 
-st.write(f"Per il clustering verranno usate solo le **{len(features_for_clustering)} feature selezionate**: {', '.join(features_for_clustering)}")
+if algoritmo_scelto == "K-Means":
+    kmeans_model = KMeans(n_clusters=k_clusters_param, random_state=kmeans_random_state_param, n_init='auto')
+    labels_pred = kmeans_model.fit_predict(X_data)
+    cluster_centers_coords = kmeans_model.cluster_centers_
+    n_clusters_found_val = len(set(labels_pred))
+    inertia_val = kmeans_model.inertia_
+elif algoritmo_scelto == "DBSCAN":
+    dbscan_model = DBSCAN(eps=eps_param, min_samples=min_samples_param)
+    labels_pred = dbscan_model.fit_predict(X_data)
+    unique_labels_set = set(labels_pred)
+    n_clusters_found_val = len(unique_labels_set) - (1 if -1 in unique_labels_set else 0)
+    n_noise_points = list(labels_pred).count(-1)
 
+# Calcola Silhouette Score se ci sono cluster validi (più di 1 cluster e non tutti rumore)
+if len(set(labels_pred)) > 1 and (len(set(labels_pred)) > 1 or (algoritmo_scelto == "DBSCAN" and -1 not in set(labels_pred))):
+    try:
+        silhouette_avg = silhouette_score(X_data, labels_pred)
+    except ValueError: # Happens if only one cluster is found, or all points are noise
+        silhouette_avg = None
+else:
+    silhouette_avg = None # Cannot compute for 1 cluster or all noise
 
-# --- Controlli per la Visualizzazione del Grafico ---
-st.markdown("---")
-st.header("📈 Visualizzazione Cluster (Grafico 2D)")
-if len(features_for_clustering) >= 2:
-    st.write("Scegli due feature (tra quelle selezionate per il clustering) da visualizzare nel grafico a dispersione.")
-    col_plot_x, col_plot_y = st.columns(2)
+# --- Visualizzazione dei Cluster ---
+col1_plot, col2_metrics = st.columns([2,1])
+
+with col1_plot:
+    st.subheader("Grafico dei Cluster")
+    fig_cluster, ax_cluster = plt.subplots(figsize=(10, 7))
+
+    # Colormap dinamica
+    unique_plot_labels = sorted(list(set(labels_pred)))
+    num_actual_clusters_for_cmap = len(unique_plot_labels) -1 if -1 in unique_plot_labels else len(unique_plot_labels)
     
-    # Default plot axes - try to pick meaningful ones if available
-    default_x_plot = 'protein_spending' if 'protein_spending' in features_for_clustering else features_for_clustering[0]
-    default_y_plot_options = [f for f in ['supplements_spending', 'avg_basket_size', 'carb_spending'] if f in features_for_clustering and f != default_x_plot]
-    default_y_plot = default_y_plot_options[0] if default_y_plot_options else (features_for_clustering[1] if len(features_for_clustering) > 1 else features_for_clustering[0])
+    # Create a color mapping
+    cluster_colors_palette = plt.cm.viridis(np.linspace(0, 1, max(1, num_actual_clusters_for_cmap)))
+    color_map_for_plot = {}
+    color_idx_plot = 0
+    for lbl_plot in unique_plot_labels:
+        if lbl_plot == -1:
+            color_map_for_plot[lbl_plot] = (0.5, 0.5, 0.5, 0.7) # Grigio per rumore
+        else:
+            if color_idx_plot < len(cluster_colors_palette):
+                color_map_for_plot[lbl_plot] = cluster_colors_palette[color_idx_plot]
+            else: # Fallback if more labels than palette colors (should not happen with current logic)
+                color_map_for_plot[lbl_plot] = (np.random.rand(), np.random.rand(), np.random.rand(), 0.8)
+            color_idx_plot +=1
+    
+    for label_val_plot in unique_plot_labels:
+        mask_plot = (labels_pred == label_val_plot)
+        current_color_plot = color_map_for_plot.get(label_val_plot, (0,0,0,1)) # Default to black if label somehow missing
+        marker_style_plot = 'x' if label_val_plot == -1 else 'o'
+        point_size_plot = 40 if label_val_plot == -1 else 60
+        plot_legend_label = f'Rumore (-1)' if label_val_plot == -1 else f'Cluster {label_val_plot}'
 
+        ax_cluster.scatter(X_data[mask_plot, 0], X_data[mask_plot, 1],
+                           facecolor=current_color_plot, marker=marker_style_plot, s=point_size_plot,
+                           label=plot_legend_label, alpha=0.8,
+                           edgecolor='k' if label_val_plot !=-1 else 'none', linewidth=0.5 if label_val_plot !=-1 else 0)
 
-    plot_x_axis = col_plot_x.selectbox(
-        "Feature per l'asse X:",
-        options=features_for_clustering,
-        index=features_for_clustering.index(default_x_plot)
-    )
-    plot_y_axis = col_plot_y.selectbox(
-        "Feature per l'asse Y:",
-        options=features_for_clustering,
-        index=features_for_clustering.index(default_y_plot)
-    )
-    if plot_x_axis == plot_y_axis:
-        st.warning("Per una visualizzazione significativa, scegli due feature diverse per l'asse X e Y.")
-elif len(features_for_clustering) == 1:
-    plot_x_axis = features_for_clustering[0]
-    plot_y_axis = None
-    st.info(f"Hai selezionato solo una feature ('{plot_x_axis}'). Verrà visualizzata come istogramma/densità se il clustering viene eseguito.")
-else:
-    st.error("Errore: nessuna feature selezionata per il clustering.") # Should be caught by earlier check
-    st.stop()
+    if algoritmo_scelto == "K-Means" and cluster_centers_coords is not None:
+        ax_cluster.scatter(cluster_centers_coords[:, 0], cluster_centers_coords[:, 1],
+                           marker='P', s=250, facecolor='red', label='Centroidi K-Means',
+                           edgecolor='black', linewidth=1.5, zorder=10)
 
+    ax_cluster.set_title(f'Dataset: {dataset_type} - Clustering con {algoritmo_scelto}')
+    ax_cluster.set_xlabel("Feature 1 (Scalata)")
+    ax_cluster.set_ylabel("Feature 2 (Scalata)")
+    ax_cluster.legend(loc='best', fontsize='small')
+    ax_cluster.grid(True, linestyle='--', alpha=0.6)
+    st.pyplot(fig_cluster)
 
-# Scalatura dei dati
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(customer_data_for_clustering)
-# Create a DataFrame from scaled data with correct column names for plotting
-customer_df_scaled = pd.DataFrame(X_scaled, columns=features_for_clustering)
+with col2_metrics:
+    st.subheader("Metriche e Riepilogo")
+    if algoritmo_scelto == "K-Means":
+        st.metric(label="Numero Cluster Richiesti (K)", value=k_clusters_param)
+        st.metric(label="Numero Cluster Trovati", value=n_clusters_found_val)
+        if inertia_val is not None:
+            st.metric(label="Inerzia (WCSS)", value=f"{inertia_val:.2f}",
+                      help="Somma delle distanze quadrate dai centroidi: minore è, meglio è.")
+    elif algoritmo_scelto == "DBSCAN":
+        st.metric(label="Numero Cluster Trovati", value=n_clusters_found_val)
+        st.metric(label="Punti Rumorosi (Outliers)", value=n_noise_points)
 
-
-# --- Pulsante per Eseguire il Clustering ---
-st.markdown("---")
-if st.button(f"🚀 Esegui {algoritmo_scelto} Clustering!", type="primary"):
-    if not plot_x_axis or (len(features_for_clustering) >=2 and not plot_y_axis):
-        st.error("Seleziona le feature per gli assi X e Y del grafico prima di eseguire il clustering.")
+    if silhouette_avg is not None:
+        st.metric(label="Silhouette Score", value=f"{silhouette_avg:.3f}",
+                  help="Misura la separazione dei cluster (-1 a +1). Più alto è, meglio definiti sono i cluster.")
     else:
-        st.subheader(f"✨ Risultati del Clustering con {algoritmo_scelto}")
+        st.info("Silhouette Score non calcolabile (es. un solo cluster trovato o tutti i punti sono rumore).")
 
-        labels = []
-        cluster_centers_scaled = None
-        cluster_centers_original = None
-        n_clusters_found = 0
-        inertia = None
-
-        if algoritmo_scelto == "K-Means":
-            kmeans = KMeans(n_clusters=k_clusters, random_state=kmeans_random_state, n_init='auto')
-            labels = kmeans.fit_predict(X_scaled)
-            cluster_centers_scaled = kmeans.cluster_centers_
-            cluster_centers_original = scaler.inverse_transform(cluster_centers_scaled)
-            n_clusters_found = len(set(labels))
-            inertia = kmeans.inertia_
-
-        elif algoritmo_scelto == "DBSCAN":
-            dbscan = DBSCAN(eps=eps, min_samples=min_samples_dbscan)
-            labels = dbscan.fit_predict(X_scaled)
-            unique_labels = set(labels)
-            n_clusters_found = len(unique_labels) - (1 if -1 in unique_labels else 0)
-
-        customer_df_full['Cluster'] = labels # Add cluster labels to the main df for analysis
-
-        # --- Visualizzazione dei Cluster ---
-        fig, ax = plt.subplots(figsize=(12, 8))
-
-        if plot_y_axis is None and plot_x_axis is not None: # 1D plot
-            unique_plot_labels = sorted(list(set(labels)))
-            for i, label_val in enumerate(unique_plot_labels):
-                data_to_plot = customer_df_scaled.loc[labels == label_val, plot_x_axis]
-                if not data_to_plot.empty:
-                    color_val = plt.cm.viridis(i / max(1, len(unique_plot_labels)-1)) if label_val != -1 else (0.5,0.5,0.5,0.6)
-                    ax.hist(data_to_plot, bins=20, alpha=0.7, label=f'Cluster {label_val}' if label_val != -1 else 'Rumore (-1)', color=color_val, density=True)
-            ax.set_title(f'Distribuzione di {plot_x_axis} (Scalata) per Cluster ({algoritmo_scelto})')
-            ax.set_xlabel(f'{plot_x_axis} (Scalata)')
-            ax.set_ylabel('Densità')
-        elif plot_x_axis and plot_y_axis: # 2D Scatter Plot
-            unique_plot_labels = sorted(list(set(labels)))
-            num_actual_clusters = len(unique_plot_labels) -1 if -1 in unique_plot_labels else len(unique_plot_labels)
-            
-            # Create a color mapping
-            cluster_colors = plt.cm.viridis(np.linspace(0, 1, max(1, num_actual_clusters)))
-            color_map_dict = {}
-            color_idx = 0
-            for lbl in unique_plot_labels:
-                if lbl == -1:
-                    color_map_dict[lbl] = (0.5, 0.5, 0.5, 0.6) # Grey for noise
-                else:
-                    color_map_dict[lbl] = cluster_colors[color_idx]
-                    color_idx +=1
-            
-            for label_val in unique_plot_labels:
-                mask = (labels == label_val)
-                current_color = color_map_dict[label_val]
-                marker_style = 'x' if label_val == -1 else 'o'
-                point_size = 60 if label_val == -1 else 100
-                plot_label = f'Rumore/Outlier (-1)' if label_val == -1 else f'Cluster {label_val}'
-
-                ax.scatter(customer_df_scaled.loc[mask, plot_x_axis],
-                           customer_df_scaled.loc[mask, plot_y_axis],
-                           c=[current_color], marker=marker_style, s=point_size, label=plot_label, alpha=0.8, edgecolors='w' if label_val !=-1 else 'none')
-
-            if algoritmo_scelto == "K-Means" and cluster_centers_scaled is not None:
-                idx_x = features_for_clustering.index(plot_x_axis)
-                idx_y = features_for_clustering.index(plot_y_axis)
-                ax.scatter(cluster_centers_scaled[:, idx_x],
-                           cluster_centers_scaled[:, idx_y],
-                           marker='X', s=350, c='red', label='Centroidi', edgecolors='black', zorder=10)
-
-            ax.set_title(f'Cluster Clienti con {algoritmo_scelto} ({plot_x_axis} vs {plot_y_axis})')
-            ax.set_xlabel(f'{plot_x_axis} (Scalata)')
-            ax.set_ylabel(f'{plot_y_axis} (Scalata)')
-        
-        ax.legend()
-        ax.grid(True, linestyle='--', alpha=0.7)
-        st.pyplot(fig)
-
-        st.markdown("---")
-        col_metrics, col_details = st.columns(2)
-
-        with col_metrics:
-            st.subheader("Metriche e Riepilogo")
-            if algoritmo_scelto == "K-Means":
-                st.metric(label="Numero di Cluster Richiesti (K)", value=k_clusters)
-                st.metric(label="Numero di Cluster Trovati Effettivi", value=n_clusters_found)
-                if inertia is not None:
-                    st.metric(label="Inerzia (WCSS)", value=f"{inertia:.2f}", help="Somma delle distanze quadrate dai centroidi: minore è, meglio è.")
-            elif algoritmo_scelto == "DBSCAN":
-                st.metric(label="Numero di Cluster Trovati", value=n_clusters_found)
-                n_noise = list(labels).count(-1)
-                st.metric(label="Punti Identificati come Rumore", value=n_noise)
-                if n_clusters_found == 0 and n_noise > 0 and n_noise < len(labels):
-                    st.warning("⚠️ Nessun cluster denso trovato. Prova a regolare `eps` (aumentare) o `min_samples` (diminuire).")
-                elif n_clusters_found == 0 and n_noise == len(labels):
-                     st.warning("⚠️ Tutti i punti sono rumore. Aumenta `eps` o diminuisci `min_samples`.")
-                elif n_clusters_found == 0 and n_noise == 0:
-                    st.warning("⚠️ Nessun cluster o rumore. Controlla dati/parametri.")
-
-        with col_details:
-            st.subheader(f"Analisi dei Cluster ({algoritmo_scelto})")
-            
-            # Create df_for_summary from customer_df_full which includes ID_Cliente and all original features + Cluster label
-            df_for_summary = customer_df_full.copy()
-            
-            # For DBSCAN, often we only want to summarize actual clusters
-            if algoritmo_scelto == "DBSCAN":
-                if n_clusters_found > 0 :
-                    df_for_summary_display = df_for_summary[df_for_summary['Cluster'] != -1]
-                else: # No clusters found, maybe all noise
-                    df_for_summary_display = pd.DataFrame() # Empty to show warning
-            else: # K-Means
-                df_for_summary_display = df_for_summary
-
-            if not df_for_summary_display.empty and 'Cluster' in df_for_summary_display:
-                # Show means of features used for clustering
-                st.write("Profilo medio (per le feature usate nel clustering) di ogni cluster:")
-                cluster_summary = df_for_summary_display.groupby('Cluster')[features_for_clustering].mean().round(2)
-                st.dataframe(cluster_summary)
-
-                # If 'is_bodybuilder' was NOT used for clustering, show its distribution in clusters
-                if 'is_bodybuilder' in customer_df_full.columns and 'is_bodybuilder' not in features_for_clustering:
-                    st.write("Distribuzione 'is_bodybuilder' (0=No, 1=Si) nei cluster trovati:")
-                    # Ensure 'is_bodybuilder' is numeric for mean calculation
-                    df_for_summary_display['is_bodybuilder'] = pd.to_numeric(df_for_summary_display['is_bodybuilder'], errors='coerce')
-                    bodybuilder_dist = df_for_summary_display.groupby('Cluster')['is_bodybuilder'].agg(['mean', 'count', 'sum']).rename(
-                        columns={'mean': '% Bodybuilder', 'count': 'N. Clienti nel Cluster', 'sum': 'N. Bodybuilder nel Cluster'}
-                    )
-                    bodybuilder_dist['% Bodybuilder'] = (bodybuilder_dist['% Bodybuilder']*100).round(1).astype(str) + '%'
-                    st.dataframe(bodybuilder_dist)
+    st.markdown("---")
+    st.write("**Conteggio Punti per Cluster:**")
+    if len(labels_pred) > 0:
+        counts = pd.Series(labels_pred).value_counts().sort_index()
+        counts.index.name = "ID Cluster"
+        st.dataframe(counts.rename("Numero Punti"))
+    else:
+        st.write("Nessun punto clusterizzato.")
 
 
-                st.markdown("""
-                **Interpretazione per MarketPro**:
-                Analizza le medie dei cluster. Per il **cluster Bodybuilder/Fitness**, cerca un profilo con:
-                * Alta `protein_spending` e `supplements_spending`.
-                * Visite frequenti (`total_visits_per_month`).
-                * Altre caratteristiche distintive basate sulle feature selezionate.
-                """)
-                if algoritmo_scelto == "K-Means" and cluster_centers_original is not None:
-                    st.write("Centroidi dei Cluster (valori originali delle feature usate per il clustering):")
-                    centroids_df = pd.DataFrame(cluster_centers_original, columns=features_for_clustering).round(2)
-                    centroids_df.index.name = "Centroide K-Means"
-                    st.dataframe(centroids_df)
-            else:
-                st.warning("Nessun cluster valido trovato per mostrare il riepilogo.")
-else:
-    st.markdown("<p style='text-align: center; font-style: italic;'>Clicca su 'Esegui Clustering!' per visualizzare i risultati.</p>", unsafe_allow_html=True)
-
-# --- Sezioni Didattiche (invariate) ---
+# --- Sezioni Didattiche ---
 st.markdown("---")
-st.header("📚 Approfondimenti sugli Algoritmi di Clustering")
+st.header("📚 Approfondimenti sugli Algoritmi")
 
-with st.expander("🔍 K-Means: Quando i Gruppi sono 'Compatti' e il loro Numero è Conosciuto"):
-    st.subheader("Cos'è il K-Means?")
+with st.expander("🔍 K-Means: Come Funziona?"):
     st.markdown("""
-    Il **K-Means** è un algoritmo di clustering basato sui centroidi. Il suo obiettivo è partizionare `N` osservazioni in `K` cluster, dove ogni osservazione appartiene al cluster con il centroide (il centroide è la media dei punti nel cluster) più vicino.
+    **K-Means** mira a partizionare N osservazioni in K cluster, assegnando ogni osservazione al cluster con il centroide (media dei punti del cluster) più vicino.
 
-    **Come funziona (iterativamente):**
-    1.  **Inizializzazione**: Vengono scelti `K` centroidi iniziali casualmente o con tecniche più sofisticate (es. K-Means++).
-    2.  **Assegnazione**: Ogni punto dati viene assegnato al centroide più vicino. Questo definisce i `K` cluster iniziali.
-    3.  **Aggiornamento**: I centroidi vengono ricalcolati come la media (il "baricentro") di tutti i punti assegnati al loro rispettivo cluster.
-    4.  **Iterazione**: I passi 2 e 3 vengono ripetuti finché i centroidi non si muovono più significativamente (convergenza) o viene raggiunto un numero massimo di iterazioni.
+    **Passaggi principali:**
+    1.  **Inizializzazione**: Scegli K centroidi iniziali (casualmente o in modo più intelligente).
+    2.  **Assegnazione**: Assegna ogni punto dati al centroide più vicino.
+    3.  **Aggiornamento**: Ricalcola i centroidi come la media dei punti assegnati a ciascun cluster.
+    4.  **Iterazione**: Ripeti i passaggi 2 e 3 finché i centroidi non si stabilizzano.
 
-    **Punti di Forza:**
-    * Semplice e veloce, specialmente su dataset di grandi dimensioni con un basso numero di K.
-    * Facile da interpretare: i cluster hanno un centro ben definito.
-    * Converge sempre.
-
-    **Punti di Debolezza:**
-    * Richiede di specificare il numero di cluster `K` in anticipo (può essere difficile da stimare).
-    * Assume cluster di forma sferica/globulare e dimensioni simili.
-    * Sensibile agli outlier (punti anomali) che possono distorcere i centroidi.
-    * Può dare risultati diversi a seconda dell'inizializzazione dei centroidi (mitigato da più run con `n_init`).
-    * Può faticare con cluster di densità molto diverse.
+    **Punti Chiave:**
+    * **Devi specificare K** (il numero di cluster) in anticipo.
+    * Assume cluster di forma **sferica/globulare** e di dimensioni simili.
+    * Sensibile alla **posizione iniziale dei centroidi** (l'opzione `n_init` in scikit-learn esegue l'algoritmo più volte con diverse inizializzazioni e sceglie la migliore).
+    * Sensibile agli **outlier**.
+    * **Veloce** e scalabile per grandi dataset (con un K ragionevole).
     """)
 
-    st.subheader("Quando usare K-Means per MarketPro?")
+with st.expander("🔬 DBSCAN: Come Funziona?"):
     st.markdown("""
-    K-Means può essere usato per MarketPro se:
-    * **Hai un'ipotesi sul numero di segmenti di clienti** che vuoi identificare (`K`). Ad esempio, se sai che ci sono circa 2-3 tipi principali di clienti.
-    * **Ti aspetti che i segmenti siano distinguibili e relativamente compatti** nelle feature selezionate.
-    * **Vuoi centroidi chiari** per definire ogni segmento.
+    **DBSCAN** (Density-Based Spatial Clustering of Applications with Noise) raggruppa i punti che sono vicini tra loro in base a una stima di densità. Può trovare cluster di forma arbitraria e identificare il rumore.
 
-    **Sfida con questo dataset:** Il gruppo "bodybuilder" è definito da valori più alti in certe spese. K-Means (con K=2 e senza usare `is_bodybuilder` come feature) dovrebbe essere in grado di separare bene i due gruppi principali se le feature distintive sono selezionate.
+    **Concetti chiave:**
+    * **`Epsilon (eps)` ($\epsilon$)**: La distanza massima tra due campioni perché uno sia considerato nel vicinato dell'altro.
+    * **`Min Samples (MinPts)`**: Il numero di campioni in un vicinato perché un punto sia considerato un "core point".
+
+    **Tipi di Punti:**
+    1.  **Core Point**: Un punto con almeno `MinPts` punti nel suo $\epsilon$-vicinato (incluso se stesso).
+    2.  **Border Point**: Un punto che non è un core point, ma è nel $\epsilon$-vicinato di un core point.
+    3.  **Noise Point (Outlier)**: Un punto che non è né core né border.
+
+    **Funzionamento:**
+    * L'algoritmo inizia da un punto arbitrario non visitato.
+    * Se è un core point, viene creato un nuovo cluster. L'algoritmo espande il cluster visitando ricorsivamente tutti i punti densamente connessi.
+    * Se è un border point, viene assegnato a un cluster (se nel vicinato di un core point di quel cluster), ma non viene usato per espandere ulteriormente il cluster.
+    * Se è un noise point, viene etichettato come tale.
+
+    **Punti Chiave:**
+    * **Non devi specificare il numero di cluster.**
+    * Può trovare cluster di **forma arbitraria**.
+    * **Robusto agli outlier**, che vengono esplicitamente identificati.
+    * La performance dipende dalla scelta di `eps` e `MinPts`. Trovare buoni valori può richiedere sperimentazione.
+    * Può faticare con cluster di **densità molto diverse**.
     """)
 
-with st.expander("🔬 DBSCAN: Scoprire Gruppi di Densità e Rilevare Anomali"):
-    st.subheader("Cos'è DBSCAN?")
-    st.markdown("""
-    **DBSCAN** (Density-Based Spatial Clustering of Applications with Noise) è un algoritmo di clustering basato sulla **densità**. A differenza di K-Means, non richiede di specificare il numero di cluster in anticipo e può identificare cluster di forme arbitrarie, oltre a classificare i punti di rumore (outlier).
-
-    **Come funziona (concetti chiave):**
-    DBSCAN si basa su due parametri principali:
-    * **`Epsilon (eps)` ($\epsilon$)**: Il raggio massimo del vicinato da considerare attorno a un punto.
-    * **`min_samples` (MinPts)**: Il numero minimo di punti che devono trovarsi all'interno del raggio `eps` di un punto affinché quel punto sia considerato un **core point**.
-
-    L'algoritmo classifica i punti come Core, Border, o Noise Point. I cluster vengono formati espandendosi dai core point ai punti densamente connessi.
-
-    **Punti di Forza:**
-    * Non richiede di specificare il numero di cluster.
-    * Può trovare cluster di forma arbitraria.
-    * Robusto agli outlier.
-
-    **Punti di Debolezza:**
-    * Sensibile alla scelta di `eps` e `min_samples`.
-    * Non gestisce bene cluster di densità molto variabile.
-    * La "maledizione della dimensionalità" può rendere difficile definire la densità.
-    """)
-
-    st.subheader("Quando usare DBSCAN per MarketPro (Individuazione Bodybuilder)?")
-    st.markdown("""
-    DBSCAN è utile se:
-    * **Non sai quanti segmenti di clienti esistono**.
-    * **Sospetti che il cluster dei bodybuilder sia un gruppo denso** ma la sua "forma" nello spazio delle feature potrebbe non essere sferica, o potrebbe esserci rumore.
-    * **Vuoi identificare clienti anomali (outlier)**.
-
-    **Sfida con questo dataset:** Trovare i giusti `eps` e `min_samples` sarà cruciale. Se i bodybuilder formano un gruppo denso e separato, DBSCAN dovrebbe identificarli. Potrebbe anche etichettare alcuni clienti "intermedi" come rumore. La standardizzazione dei dati (già fatta) è molto importante per DBSCAN.
-    """)
+st.markdown("---")
+st.caption("Applicazione didattica per visualizzare algoritmi di clustering. Creato con Streamlit.")
