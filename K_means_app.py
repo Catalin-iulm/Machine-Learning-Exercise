@@ -14,10 +14,13 @@ from sklearn.neighbors import NearestNeighbors
 
 # Inizializzazione session state
 if 'clustering_done' not in st.session_state:
-    st.session_state.clustering_done = False
-    st.session_state.current_algo = None
-    st.session_state.X_red = None
-    st.session_state.labels = None
+    st.session_state.update({
+        'clustering_done': False,
+        'current_algo': None,
+        'X_red': None,
+        'labels': None,
+        'show_data': False
+    })
 
 # Configurazione pagina
 st.set_page_config(page_title="Clustering Retail", layout="wide", page_icon="🛒")
@@ -37,6 +40,7 @@ with st.sidebar:
     algo_choice = st.radio(
         "**Selezione algoritmo**",
         ["K-Means", "DBSCAN"],
+        index=0 if st.session_state.current_algo is None else ["K-Means", "DBSCAN"].index(st.session_state.current_algo),
         help="K-Means: per cluster sferici di dimensioni simili\nDBSCAN: per cluster di forma arbitraria e rilevamento outlier"
     )
     
@@ -121,6 +125,11 @@ with st.sidebar:
         st.session_state.current_algo = algo_choice
         st.experimental_rerun()
 
+    # Pulsante per visualizzare i dati
+    if st.button("📊 Mostra Dataset"):
+        st.session_state.show_data = not st.session_state.show_data
+        st.experimental_rerun()
+
 # Generazione dati simulati con cache
 @st.cache_data
 def generate_retail_data():
@@ -149,6 +158,27 @@ def generate_retail_data():
 # Caricamento dati con progress bar
 with st.spinner('Generazione dati simulati...'):
     df = generate_retail_data()
+
+# Visualizzazione dataset se richiesto
+if st.session_state.show_data:
+    st.header("📊 Dataset Completo")
+    st.dataframe(df, height=500)
+    
+    # Opzioni di esportazione
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Scarica CSV",
+        data=csv,
+        file_name="retail_dataset.csv",
+        mime="text/csv"
+    )
+    
+    # Statistiche descrittive
+    st.subheader("Statistiche Descrittive")
+    st.dataframe(df.describe())
+    
+    # Interrompe l'esecuzione per mostrare solo i dati
+    st.stop()
 
 # Preelaborazione dati
 try:
