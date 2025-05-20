@@ -133,11 +133,24 @@ else:
     X_ridotto = reducer.fit_transform(X)
     metodo_riduzione = "t-SNE"
 
+# Creiamo un DataFrame per il plotting
+plot_df = pd.DataFrame({
+    "Componente_1": X_ridotto[:, 0],
+    "Componente_2": X_ridotto[:, 1]
+})
+
+# Aggiungiamo le features selezionate per l'hover
+for feature in features_selezionate:
+    plot_df[feature] = df[feature]
+
 # Clustering
 if algoritmo == "K-Means":
     model = KMeans(n_clusters=n_clusters, max_iter=max_iter, n_init='auto')
     labels = model.fit_predict(X)
     centers = scaler.inverse_transform(model.cluster_centers_)
+    
+    # Aggiungiamo le etichette al DataFrame per il plotting
+    plot_df["Cluster"] = labels.astype(str)
     
     # Visualizzazione evoluzione iterazioni
     if 'n_iter_viz' in locals():
@@ -176,6 +189,7 @@ else:
     model = DBSCAN(eps=eps, min_samples=min_samples)
     labels = model.fit_predict(X)
     centers = None
+    plot_df["Cluster"] = labels.astype(str)
 
 # Calcolo metriche
 if len(set(labels)) > 1 and -1 not in set(labels):
@@ -192,15 +206,26 @@ with tab1:
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Plot cluster
-        fig = px.scatter(
-            x=X_ridotto[:, 0], y=X_ridotto[:, 1], 
-            color=labels.astype(str),
-            title=f"Risultati Clustering ({metodo_riduzione})",
-            labels={"x": "Componente 1", "y": "Componente 2", "color": "Cluster"},
-            hover_data=df[features_selezionate]
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # Plot cluster con Plotly Express
+        try:
+            fig = px.scatter(
+                plot_df,
+                x="Componente_1",
+                y="Componente_2",
+                color="Cluster",
+                title=f"Risultati Clustering ({metodo_riduzione})",
+                labels={
+                    "Componente_1": "Componente 1",
+                    "Componente_2": "Componente 2",
+                    "Cluster": "Cluster"
+                },
+                hover_data=features_selezionate
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Errore nella creazione del grafico: {str(e)}")
+            st.write("Dati per il grafico:")
+            st.write(plot_df.head())
     
     with col2:
         st.subheader("Metriche")
