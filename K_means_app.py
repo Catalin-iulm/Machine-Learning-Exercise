@@ -128,9 +128,34 @@ def generate_customer_data(n_samples, random_state):
     
     return X_scaled, df_unscaled, numerical_features # Return numerical features list for consistency
 
-# --- Mapping per Nomi Features Marketing ---
+# --- Funzione per Analizzare le Caratteristiche dei Cluster (Cluster Profiling) ---
+def analyze_cluster_characteristics(df_original, labels, numerical_features):
+    df_with_labels = df_original.copy()
+    df_with_labels['Cluster'] = labels
+
+    cluster_profiles = {}
+    for cluster_id in sorted(df_with_labels['Cluster'].unique()):
+        if cluster_id == -1:
+            cluster_name = "Rumore/Outlier"
+        else:
+            cluster_name = f"Segmento {cluster_id}"
+        
+        cluster_data = df_with_labels[df_with_labels['Cluster'] == cluster_id]
+        
+        profile = {
+            'N° Clienti': len(cluster_data)
+        }
+        for feature in numerical_features:
+            profile[f'Media {feature}'] = cluster_data[feature].mean()
+            profile[f'Mediana {feature}'] = cluster_data[feature].median()
+            profile[f'Std Dev {feature}'] = cluster_data[feature].std()
+        
+        cluster_profiles[cluster_name] = profile
+    
+    return cluster_profiles, df_with_labels
+
+# --- Mapping per Nomi Features Marketing (pre-populate for sidebar) ---
 # This will be dynamically generated later based on the actual numerical features from generate_customer_data
-# For now, keep it as a placeholder, it will be overridden by the actual features from the generated data
 feature_names_mapping_placeholder = {
     "Età": "Età",
     "Reddito Medio Annuo (€)": "Reddito Medio Annuo (€)",
@@ -154,8 +179,9 @@ with st.sidebar:
     st.markdown("---")
 
     # --- Generazione Dati (needed here to get feature names for selectbox) ---
-    # We call it once to get the list of numerical features and df structure
-    X_data_scaled_full_temp, df_data_unscaled_temp, numerical_features_list = generate_customer_data(100, random_state_ds)
+    # We call it once with a dummy number of samples to get the list of numerical features and df structure
+    # This df_temp is only used for feature names, not for the actual clustering
+    X_data_scaled_full_temp, df_data_unscaled_temp, numerical_features_list = generate_customer_data(10, random_state_ds)
     # Update feature_names_mapping with the actual generated numerical features
     feature_names_mapping = {feat: feat for feat in numerical_features_list}
 
@@ -296,7 +322,12 @@ with col1_plot:
     unique_plot_labels = sorted(list(set(labels_pred)))
     num_actual_clusters_for_cmap = len(unique_plot_labels) -1 if -1 in unique_plot_labels else len(unique_plot_labels)
     
-    cluster_colors_palette = plt.cm.viridis(np.linspace(0, 1, max(1, num_actual_clusters_for_cmap)))
+    # Ensure there are enough colors even if num_actual_clusters_for_cmap is 0 or 1
+    if num_actual_clusters_for_cmap == 0:
+        cluster_colors_palette = [plt.cm.viridis(0.5)] # Single color for case no clusters
+    else:
+        cluster_colors_palette = plt.cm.viridis(np.linspace(0, 1, num_actual_clusters_for_cmap))
+    
     color_map_for_plot = {}
     color_idx_plot = 0
     for lbl_plot in unique_plot_labels:
@@ -364,6 +395,78 @@ with col2_metrics:
         st.dataframe(counts.rename("Numero di Clienti"))
     else:
         st.write("Nessun cliente clusterizzato.")
+
+st.markdown("---")
+st.header("🔬 Analisi Dettagliata dei Segmenti (Profili dei Cluster)")
+
+if len(set(labels_pred)) > 0:
+    cluster_profiles, df_with_labels = analyze_cluster_characteristics(df_data_unscaled, labels_pred, numerical_features_list)
+    
+    all_cluster_names = ["Tutti i Cluster"] + sorted([name for name in cluster_profiles.keys() if name != "Rumore/Outlier"])
+    if "Rumore/Outlier" in cluster_profiles:
+        all_cluster_names.append("Rumore/Outlier") # Add noise at the end
+
+    cluster_to_show = st.selectbox("Seleziona un Segmento per Analizzare il Profilo Dettagliato:", all_cluster_names)
+
+    if cluster_to_show == "Tutti i Cluster":
+        st.subheader("Panoramica Comparativa delle Medie delle Caratteristiche per Tutti i Segmenti")
+        
+        # Prepare data for bar chart - Mean of each feature for each cluster
+        cluster_means_df = pd.DataFrame()
+        for c_name, profile_data in cluster_profiles.items():
+            if c_name == "Rumore/Outlier": continue # Exclude noise from this comparative bar chart if preferred
+            means_only = {k.replace('Media ', ''): v for k, v in profile_data.items() if 'Media ' in k}
+            cluster_means_df = pd.concat([cluster_means_df, pd.DataFrame(means_only, index=[c_name])])
+        
+        if not cluster_means_df.empty:
+            st.bar_chart(cluster_means_df.T) # Transpose to have features on y-axis and clusters as bars
+            st.info("Il grafico a barre mostra la media di ciascuna caratteristica per ogni segmento, permettendo un confronto rapido. Puoi notare come alcuni segmenti si distinguano per valori alti o bassi in specifiche caratteristiche.")
+        else:
+            st.warning("Nessun segmento valido trovato per la comparazione (potrebbe esserci solo rumore).")
+
+        st.subheader("Dettagli Riassuntivi di Tutti i Segmenti")
+        summary_data = []
+        for c_name, profile_data in cluster_profiles.items():
+            row = {'Segmento': c_name, 'N° Clienti': profile_data['N° Clienti']}
+            for feature in numerical_features_list:
+                row[f'Media {feature}'] = f"{profile_data[f'Media {feature}']:.2f}"
+            summary_data.append(row)
+        st.dataframe(pd.DataFrame(summary_data).set_index('Segmento'))
+        st.info("Questa tabella riassume le caratteristiche medie di tutti i segmenti trovati, inclusi i 'clienti rumore'.")
+
+    else:
+        st.subheader(f"Profilo Dettagliato del {cluster_to_show}")
+        profile_data = cluster_profiles[cluster_to_show]
+        
+        st.write(f"**Numero di Clienti in questo Segmento:** {profile_data['N° Clienti']}")
+        
+        profile_df = pd.DataFrame({
+            'Statistica': ['Media', 'Mediana', 'Deviazione Standard'],
+            **{
+                feature: [
+                    profile_data[f'Media {feature}'],
+                    profile_data[f'Mediana {feature}'],
+                    profile_data[f'Std Dev {feature}']
+                ] for feature in numerical_features_list
+            }
+        }).set_index('Statistica')
+        st.dataframe(profile_df)
+        st.info(f"""
+        Questa tabella fornisce una visione approfondita delle caratteristiche dei clienti nel **{cluster_to_show}**.
+        * La **Media** indica il valore tipico per la caratteristica.
+        * La **Mediana** è meno sensibile agli outlier e mostra il valore centrale.
+        * La **Deviazione Standard (Std Dev)** indica la variabilità all'interno del segmento per quella caratteristica: una Std Dev bassa significa che i clienti sono molto simili per quella caratteristica, una alta indica più eterogeneità.
+        """)
+        
+        # Optional: Bar chart for the selected cluster's mean features
+        st.subheader(f"Visualizzazione delle Medie delle Caratteristiche per il {cluster_to_show}")
+        mean_features_for_single_cluster = {k.replace('Media ', ''): v for k, v in profile_data.items() if 'Media ' in k}
+        # Create a DataFrame suitable for bar_chart, with a single row for the selected cluster
+        df_for_bar_chart = pd.DataFrame([mean_features_for_single_cluster])
+        st.bar_chart(df_for_bar_chart.T)
+        st.info("Questo grafico a barre evidenzia i valori medi delle caratteristiche per il segmento selezionato. Osserva quali caratteristiche hanno valori particolarmente alti o bassi per questo segmento rispetto agli altri.")
+else:
+    st.info("Nessun cluster trovato. Assicurati di aver generato i dati e di aver impostato correttamente i parametri dell'algoritmo.")
 
 
 # --- Sezioni Didattiche ---
