@@ -6,7 +6,8 @@ from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import make_blobs
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
-from sklearn.decomposition import PCA, TSNE
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE # TSNE è stato spostato in sklearn.manifold
 import plotly.express as px # Usiamo Plotly per grafici più interattivi
 
 # --- Configurazione Pagina Streamlit ---
