@@ -29,7 +29,7 @@ def generate_retail_data():
         "Reddito (k€)": np.round(np.clip(np.random.normal(50, 20, n), 20, 150)),
         "Visite/Mese": np.random.poisson(8, n),
         "Spesa Media (€)": np.round(np.clip(np.random.normal(80, 30, n), 10, 200)),
-        "% Online": np.round(np.clip(np.random.beta(2, 5, n), 0, 1)
+        "% Online": np.round(np.clip(np.random.beta(2, 5, n), 0, 1))
     }
     
     return pd.DataFrame(data)
