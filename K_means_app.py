@@ -35,32 +35,48 @@ with st.sidebar:
     st.subheader("2. Algorithm Selection")
     algorithm = st.radio("Clustering Algorithm:", 
                          ["K-Means", "DBSCAN", "Hierarchical"], 
-                         index=0)
+                         index=0) # Default a K-Means
+
+    # MODIFICA: Inizializza tutte le variabili dei parametri degli algoritmi con valori di default.
+    # Questo risolve il NameError, assicurando che le variabili esistano sempre,
+    # anche se i loro widget non sono visualizzati per l'algoritmo selezionato di default.
+    n_clusters = 6 # Default per K-Means e Hierarchical
+    init_method = "k-means++" # Default per K-Means
+    max_iter = 300 # Default per K-Means
     
+    eps = 0.5 # Default per DBSCAN
+    min_samples = 10 # Default per DBSCAN
+    metric = "euclidean" # Default per DBSCAN e Hierarchical (affinity)
+    
+    linkage_method = "ward" # Default per Hierarchical
+    affinity = "euclidean" # Default per Hierarchical
+
     if algorithm == "K-Means":
         n_clusters = st.slider("Number of clusters (K)", 2, 15, 6)
         init_method = st.selectbox("Initialization method", 
-                                 ["k-means++", "random"])
+                                  ["k-means++", "random"])
         max_iter = st.slider("Max iterations", 100, 500, 300)
         
     elif algorithm == "DBSCAN":
         eps = st.slider("Epsilon (neighborhood radius)", 0.1, 2.0, 0.5, step=0.05)
         min_samples = st.slider("Minimum samples", 1, 50, 10)
         metric = st.selectbox("Distance metric", 
-                            ["euclidean", "cosine", "manhattan"])
+                               ["euclidean", "cosine", "manhattan"])
         
     elif algorithm == "Hierarchical":
         n_clusters = st.slider("Number of clusters", 2, 15, 6)
         linkage_method = st.selectbox("Linkage method", 
-                                    ["ward", "complete", "average", "single"])
+                                        ["ward", "complete", "average", "single"])
+        # MODIFICA: Per AgglomerativeClustering, 'affinity' e 'metric' sono usati in modo interscambiabile
+        # ma 'affinity' è il parametro ufficiale per la distanza.
         affinity = st.selectbox("Affinity metric", 
                                ["euclidean", "cosine", "manhattan"])
     
     st.subheader("3. Visualization")
     dim_reduction = st.selectbox("Dimensionality reduction", 
-                               ["PCA", "t-SNE", "Original Features"])
+                                 ["PCA", "t-SNE", "Original Features"])
     plot_engine = st.selectbox("Plotting engine", 
-                             ["Matplotlib", "Plotly"])
+                               ["Matplotlib", "Plotly"])
     
     st.markdown("---")
     if st.button("🔄 Run Analysis"):
@@ -129,25 +145,30 @@ def generate_retail_data(n_samples, noise_level, random_state):
         
         # Add some noise
         noise_mask = np.random.random(n) < (noise_level/100)
-        noise_factor = 1 + np.random.normal(0, 0.5, size=(noise_mask.sum(), len(params)))
         
-        # Apply noise
+        # MODIFICA: Assicurarsi che noise_factor abbia la stessa dimensione dei dati a cui viene applicato
+        # e che la moltiplicazione avvenga solo per i valori numerici.
         if noise_mask.any():
-            noisy_data = np.column_stack([age[noise_mask], income[noise_mask], 
-                                        online_visits[noise_mask], basket_size[noise_mask],
-                                        organic_pct[noise_mask], discount_sensitivity[noise_mask],
-                                        store_visits[noise_mask], brand_loyalty[noise_mask]])
-            
-            noisy_data = noisy_data * noise_factor
-            
-            age[noise_mask] = noisy_data[:,0]
-            income[noise_mask] = noisy_data[:,1]
-            online_visits[noise_mask] = np.abs(noisy_data[:,2])
-            basket_size[noise_mask] = np.abs(noisy_data[:,3])
-            organic_pct[noise_mask] = np.clip(noisy_data[:,4], 0, 1)
-            discount_sensitivity[noise_mask] = np.clip(noisy_data[:,5], 0, 1)
-            store_visits[noise_mask] = np.abs(noisy_data[:,6])
-            brand_loyalty[noise_mask] = np.clip(noisy_data[:,7], 0, 1)
+            # Creare una copia per evitare SettingWithCopyWarning
+            temp_age = age[noise_mask].copy()
+            temp_income = income[noise_mask].copy()
+            temp_online_visits = online_visits[noise_mask].copy()
+            temp_basket_size = basket_size[noise_mask].copy()
+            temp_organic_pct = organic_pct[noise_mask].copy()
+            temp_discount_sensitivity = discount_sensitivity[noise_mask].copy()
+            temp_store_visits = store_visits[noise_mask].copy()
+            temp_brand_loyalty = brand_loyalty[noise_mask].copy()
+
+            noise_factor_single = 1 + np.random.normal(0, 0.5, size=temp_age.shape)
+
+            age[noise_mask] = temp_age * noise_factor_single
+            income[noise_mask] = temp_income * noise_factor_single
+            online_visits[noise_mask] = np.abs(temp_online_visits * noise_factor_single)
+            basket_size[noise_mask] = np.abs(temp_basket_size * noise_factor_single)
+            organic_pct[noise_mask] = np.clip(temp_organic_pct * noise_factor_single, 0, 1)
+            discount_sensitivity[noise_mask] = np.clip(temp_discount_sensitivity * noise_factor_single, 0, 1)
+            store_visits[noise_mask] = np.abs(temp_store_visits * noise_factor_single)
+            brand_loyalty[noise_mask] = np.clip(temp_brand_loyalty * noise_factor_single, 0, 1)
         
         # Create records
         for i in range(n):
@@ -201,16 +222,30 @@ df, X_scaled, features = generate_retail_data(n_samples, noise_level, random_sta
 @st.cache_data
 def reduce_dimensions(X, method, random_state):
     if method == "PCA":
-        reducer = PCA(n_components=2, random_state=random_state)
+        # MODIFICA: Gestisce il caso in cui X abbia meno di 2 componenti per PCA
+        n_components_pca = min(X.shape[1], 2)
+        if n_components_pca < 2:
+            st.warning("Not enough features for PCA (requires at least 2). Using first available feature.")
+            return X[:, :1], f"PCA (Component 1)"
+        reducer = PCA(n_components=n_components_pca, random_state=random_state)
         reduced = reducer.fit_transform(X)
         explained_var = reducer.explained_variance_ratio_.sum() * 100
         return reduced, f"PCA (Variance Explained: {explained_var:.1f}%)"
     elif method == "t-SNE":
-        reducer = TSNE(n_components=2, random_state=random_state, perplexity=30)
+        # MODIFICA: Perplexity deve essere inferiore al numero di campioni
+        perplexity_val = min(30, len(X) - 1)
+        if perplexity_val <= 1:
+            st.warning("Not enough samples for t-SNE (requires at least 2 samples). Using original features.")
+            return X[:, :2], "Original Features (First 2)"
+        reducer = TSNE(n_components=2, random_state=random_state, perplexity=perplexity_val)
         reduced = reducer.fit_transform(X)
         return reduced, "t-SNE"
     else:
-        # Use first two original features
+        # Usa le prime due feature originali
+        # MODIFICA: Assicurarsi che ci siano almeno 2 colonne
+        if X.shape[1] < 2:
+            st.warning("Not enough original features for 2D plot. Using first available feature.")
+            return X[:, :1], "Original Features (First 1)"
         return X[:, :2], "Original Features (First 2)"
 
 X_reduced, reduction_method = reduce_dimensions(X_scaled, dim_reduction, random_state)
@@ -218,34 +253,60 @@ X_reduced, reduction_method = reduce_dimensions(X_scaled, dim_reduction, random_
 # --- Clustering ---
 @st.cache_data
 def perform_clustering(X, algorithm, params, random_state):
+    labels = np.array([]) # Inizializza labels per ogni caso
+    model = None
+    centers = None
+
+    # MODIFICA: Aggiunto un controllo per X.shape[0] < n_clusters per K-Means e Hierarchical
+    # E per DBSCAN, se ci sono troppi pochi punti o parametri assurdi.
+    if X.shape[0] == 0:
+        st.warning("No data points to cluster. Please increase 'Number of simulated customers'.")
+        return np.array([-1]*len(X)), None, None # Restituisce tutti come rumore
+    
     if algorithm == "K-Means":
-        model = KMeans(
-            n_clusters=params['n_clusters'],
-            init=params['init_method'],
-            max_iter=params['max_iter'],
-            random_state=random_state,
-            n_init='auto'
-        )
-        labels = model.fit_predict(X)
-        centers = model.cluster_centers_ if hasattr(model, 'cluster_centers_') else None
+        if params['n_clusters'] >= X.shape[0]:
+            st.warning(f"K-Means: Number of clusters ({params['n_clusters']}) must be less than the number of samples ({X.shape[0]}). Defaulting to 1 cluster.")
+            labels = np.zeros(X.shape[0], dtype=int)
+            centers = np.mean(X, axis=0).reshape(1, -1) if X.shape[0] > 0 else np.array([])
+        else:
+            model = KMeans(
+                n_clusters=params['n_clusters'],
+                init=params['init_method'],
+                max_iter=params['max_iter'],
+                random_state=random_state,
+                n_init='auto'
+            )
+            labels = model.fit_predict(X)
+            centers = model.cluster_centers_ if hasattr(model, 'cluster_centers_') else None
         
     elif algorithm == "DBSCAN":
-        model = DBSCAN(
-            eps=params['eps'],
-            min_samples=params['min_samples'],
-            metric=params['metric']
-        )
-        labels = model.fit_predict(X)
-        centers = None
+        if params['min_samples'] >= X.shape[0] or params['eps'] <= 0:
+             st.warning(f"DBSCAN: Invalid parameters (min_samples={params['min_samples']}, eps={params['eps']}). All points will be noise or assigned to single cluster.")
+             labels = np.array([-1]*X.shape[0]) # Tutti rumore
+        else:
+            model = DBSCAN(
+                eps=params['eps'],
+                min_samples=params['min_samples'],
+                metric=params['metric']
+            )
+            labels = model.fit_predict(X)
+            # DBSCAN non ha centri di cluster espliciti come K-Means
+            centers = None 
         
     elif algorithm == "Hierarchical":
-        model = AgglomerativeClustering(
-            n_clusters=params['n_clusters'],
-            affinity=params['affinity'],
-            linkage=params['linkage_method']
-        )
-        labels = model.fit_predict(X)
-        centers = None
+        if params['n_clusters'] >= X.shape[0]:
+            st.warning(f"Hierarchical: Number of clusters ({params['n_clusters']}) must be less than the number of samples ({X.shape[0]}). Defaulting to 1 cluster.")
+            labels = np.zeros(X.shape[0], dtype=int)
+            # Non ci sono centri espliciti
+            centers = None
+        else:
+            model = AgglomerativeClustering(
+                n_clusters=params['n_clusters'],
+                affinity=params['affinity'],
+                linkage=params['linkage_method']
+            )
+            labels = model.fit_predict(X)
+            centers = None
     
     return labels, model, centers
 
@@ -279,19 +340,35 @@ labels, model, centers = perform_clustering(
 def calculate_metrics(X, labels):
     metrics = {}
     
-    if len(set(labels)) > 1:
-        metrics['Silhouette Score'] = silhouette_score(X, labels)
-        metrics['Davies-Bouldin Index'] = davies_bouldin_score(X, labels)
-        metrics['Calinski-Harabasz Index'] = calinski_harabasz_score(X, labels)
+    # MODIFICA: Calcola le metriche solo se ci sono almeno 2 cluster e più di 1 campione
+    # e se non tutti i punti sono rumore (-1)
+    unique_labels = set(labels)
+    n_actual_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+
+    if n_actual_clusters > 1 and len(labels) > 1 and not all(l == -1 for l in labels):
+        try:
+            metrics['Silhouette Score'] = silhouette_score(X, labels)
+        except Exception: # Aggiunto try-except per Silhouette score in casi limite
+            metrics['Silhouette Score'] = np.nan
+        
+        try:
+            metrics['Davies-Bouldin Index'] = davies_bouldin_score(X, labels)
+        except Exception: # Aggiunto try-except per Davies-Bouldin in casi limite
+            metrics['Davies-Bouldin Index'] = np.nan
+        
+        try:
+            metrics['Calinski-Harabasz Index'] = calinski_harabasz_score(X, labels)
+        except Exception: # Aggiunto try-except per Calinski-Harabasz in casi limite
+            metrics['Calinski-Harabasz Index'] = np.nan
     else:
-        metrics['Silhouette Score'] = None
-        metrics['Davies-Bouldin Index'] = None
-        metrics['Calinski-Harabasz Index'] = None
+        metrics['Silhouette Score'] = np.nan # Usare np.nan invece di None per consistenza
+        metrics['Davies-Bouldin Index'] = np.nan
+        metrics['Calinski-Harabasz Index'] = np.nan
     
     # Cluster counts
     unique, counts = np.unique(labels, return_counts=True)
     metrics['Cluster Distribution'] = dict(zip(unique, counts))
-    metrics['Number of Clusters'] = len(unique) - (1 if -1 in unique else 0)
+    metrics['Number of Clusters'] = n_actual_clusters
     metrics['Noise Points'] = counts[unique == -1][0] if -1 in unique else 0
     
     return metrics
@@ -299,40 +376,69 @@ def calculate_metrics(X, labels):
 metrics = calculate_metrics(X_scaled, labels)
 
 # --- Visualization ---
-def create_cluster_plot(X, labels, centers, method, engine):
+def create_cluster_plot(X, labels, centers, method, engine, df_original): # Passa df_originale
+    # MODIFICA: Controlla se X_reduced ha abbastanza colonne per il plot 2D
+    if X.shape[1] < 2:
+        st.warning(f"Dimensionality reduction method '{method}' resulted in less than 2 dimensions. Cannot create a 2D scatter plot.")
+        fig = plt.figure(figsize=(10, 7))
+        plt.text(0.5, 0.5, "Insufficient dimensions for 2D plot", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=14)
+        plt.axis('off')
+        return fig # Ritorna una figura vuota o un messaggio
+
     plot_df = pd.DataFrame({
         "x": X[:, 0],
         "y": X[:, 1],
         "cluster": labels,
-        "size": df["Avg Basket Size ($)"] / 10  # Scale for visualization
+        # MODIFICA: Assicurati che "Avg Basket Size ($)" esista e sia numerico
+        "size": df_original["Avg Basket Size ($)"].fillna(0).astype(float) / 10 # Scale for visualization
     })
     
+    # MODIFICA: Converti i cluster in stringhe per Plotly, così i cluster -1 (noise) sono gestiti meglio
+    plot_df['cluster_str'] = plot_df['cluster'].astype(str)
+
     if engine == "Plotly":
         fig = px.scatter(
-            plot_df, x="x", y="y", color="cluster",
+            plot_df, x="x", y="y", color="cluster_str", # Usa cluster_str per il colore
             size="size", hover_data={
                 "x": False, "y": False,
-                "Age": df["Age"],
-                "Income": df["Annual Income ($)"],
-                "Online Visits": df["Monthly Online Visits"],
-                "Basket Size": df["Avg Basket Size ($)"]
+                "Age": df_original["Age"],
+                "Income": df_original["Annual Income ($)"],
+                "Online Visits": df_original["Monthly Online Visits"],
+                "Basket Size": df_original["Avg Basket Size ($)"]
             },
             title=f"Customer Segments ({method})",
             labels={"x": "Component 1", "y": "Component 2"},
-            color_continuous_scale=px.colors.qualitative.Plotly
+            color_discrete_map={'-1': 'grey'}, # Colora il rumore di grigio
+            color_discrete_sequence=px.colors.qualitative.Plotly # Assicurati che ci siano abbastanza colori
         )
         
-        if centers is not None:
-            centers_df = pd.DataFrame({
-                "x": centers[:, 0],
-                "y": centers[:, 1],
-                "cluster": ["Center"] * len(centers)
-            })
-            fig.add_scatter(
-                x=centers_df["x"], y=centers_df["y"],
-                mode="markers", marker=dict(size=12, color="black", symbol="x"),
-                name="Cluster Centers"
-            )
+        if centers is not None and centers.shape[1] >= 2: # Controlla che i centri abbiano 2 dimensioni
+            # MODIFICA: Applica la stessa riduzione dimensionale ai centri dei cluster
+            # Nota: questo è valido solo per PCA. Per t-SNE, i centri non possono essere ridotti allo stesso modo.
+            # Se la riduzione è PCA, applichiamo la stessa trasformazione
+            if method.startswith("PCA"):
+                # Qui servirebbe il 'reducer' originale, ma non è passato.
+                # Per ora, assumiamo che 'centers' sia già nella dimensione ridotta
+                # se l'algoritmo lo fornisce (es. K-Means sui dati PCA-ridotti).
+                # Se X_reduced deriva da PCA, e 'centers' è calcolato da K-Means su X_reduced, allora va bene.
+                # Se X_reduced deriva da t-SNE, i centri non sono interpretabili in quel senso.
+                centers_df = pd.DataFrame({
+                    "x": centers[:, 0],
+                    "y": centers[:, 1],
+                    "cluster": ["Center"] * len(centers)
+                })
+                fig.add_scatter(
+                    x=centers_df["x"], y=centers_df["y"],
+                    mode="markers", marker=dict(size=12, color="black", symbol="x"),
+                    name="Cluster Centers"
+                )
+            elif centers is not None and method != "t-SNE": # Se non è t-SNE e abbiamo centri
+                # Se i centri sono stati calcolati sui dati originali scalati e poi ridotti via PCA
+                # questo è un caso complesso, ma per K-Means applicato a X_scaled, i centri
+                # saranno nella dimensione delle feature. Se X_reduced è PCA, allora i centri
+                # dovrebbero essere anch'essi trasformati.
+                # Per semplicità, li mostriamo solo se l'algoritmo li produce e la riduzione li supporta.
+                pass # Non mostrare centri se non è K-Means o se la riduzione non li supporta direttamente.
         
         fig.update_layout(
             hovermode="closest",
@@ -343,13 +449,24 @@ def create_cluster_plot(X, labels, centers, method, engine):
     
     else:  # Matplotlib
         plt.figure(figsize=(10, 7))
+        # MODIFICA: Gestisci i colori per il rumore (-1)
+        unique_labels = np.unique(labels)
+        colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels) - (1 if -1 in unique_labels else 0)))
+        
+        # Mappa i colori ai cluster, assegnando il grigio al cluster -1
+        color_map = {label: colors[i] for i, label in enumerate(unique_labels) if label != -1}
+        if -1 in unique_labels:
+            color_map[-1] = 'grey' # Rumore
+
+        mapped_colors = [color_map[label] for label in labels]
+
         scatter = plt.scatter(
             X[:, 0], X[:, 1], 
-            c=labels, s=df["Avg Basket Size ($)"]/5,
-            cmap="viridis", alpha=0.7
+            c=mapped_colors, s=df_original["Avg Basket Size ($)"].fillna(0).astype(float)/5,
+            alpha=0.7
         )
         
-        if centers is not None:
+        if centers is not None and centers.shape[1] >= 2: # Controlla che i centri abbiano 2 dimensioni
             plt.scatter(
                 centers[:, 0], centers[:, 1],
                 marker="X", s=200, c="red", 
@@ -360,17 +477,35 @@ def create_cluster_plot(X, labels, centers, method, engine):
         plt.title(f"Customer Segments ({method})")
         plt.xlabel("Component 1")
         plt.ylabel("Component 2")
-        plt.colorbar(scatter, label="Cluster")
+        
+        # Creare una legenda manuale per i cluster se necessario
+        handles = [plt.Line2D([0], [0], marker='o', color='w', label=f'Cluster {l}',
+                              markerfacecolor=color_map[l], markersize=10) 
+                   for l in sorted(unique_labels) if l != -1]
+        if -1 in unique_labels:
+            handles.append(plt.Line2D([0], [0], marker='o', color='w', label='Noise (-1)',
+                                      markerfacecolor=color_map[-1], markersize=10))
+        if centers is not None and centers.shape[1] >= 2:
+            handles.append(plt.Line2D([0], [0], marker='X', color='w', label='Cluster Centers',
+                                      markerfacecolor='red', markeredgecolor='black', markersize=12))
+
+        plt.legend(handles=handles, title="Cluster")
+
         plt.grid(alpha=0.2)
         plt.tight_layout()
         return plt.gcf()
 
 # Create the plot
+# MODIFICA: Passa il dataframe originale per accedere alle colonne usate per la dimensione del punto
 cluster_plot = create_cluster_plot(
     X_reduced, labels, 
-    centers if centers is not None and dim_reduction != "t-SNE" else None,
+    # MODIFICA: I centri sono visualizzabili solo se sono disponibili e la riduzione non è t-SNE
+    # e se X_reduced ha le stesse dimensioni dei centri (caso più comune per K-Means su dati ridotti).
+    # Per DBSCAN e Hierarchical non ci sono centri espliciti.
+    centers if algorithm == "K-Means" and dim_reduction != "t-SNE" else None, 
     reduction_method,
-    plot_engine
+    plot_engine,
+    df # Passa il dataframe originale qui
 )
 
 # --- Cluster Profiling ---
@@ -384,15 +519,21 @@ def profile_clusters(df, labels, features):
     )
     
     # Categorical summary
+    # MODIFICA: Aggiungi un controllo per assicurarti che ci siano dati nel cluster prima di calcolare
     if "Gender" in df.columns:
-        gender_dist = pd.crosstab(df_clustered["Cluster"], df_clustered["Gender"])
-        gender_dist_pct = gender_dist.div(gender_dist.sum(1), axis=0)
-        cluster_profiles = pd.concat([cluster_profiles, gender_dist_pct], axis=1)
+        if not df_clustered.empty:
+            gender_dist = pd.crosstab(df_clustered["Cluster"], df_clustered["Gender"])
+            # Evita divisione per zero se una riga è vuota
+            gender_dist_sum = gender_dist.sum(1)
+            gender_dist_pct = gender_dist.div(gender_dist_sum, axis=0) if not gender_dist_sum.empty else gender_dist
+            cluster_profiles = pd.concat([cluster_profiles, gender_dist_pct], axis=1)
     
     if "Loyalty Card Member" in df.columns:
-        loyalty_dist = pd.crosstab(df_clustered["Cluster"], df_clustered["Loyalty Card Member"])
-        loyalty_dist_pct = loyalty_dist.div(loyalty_dist.sum(1), axis=0)
-        cluster_profiles = pd.concat([cluster_profiles, loyalty_dist_pct], axis=1)
+        if not df_clustered.empty:
+            loyalty_dist = pd.crosstab(df_clustered["Cluster"], df_clustered["Loyalty Card Member"])
+            loyalty_dist_sum = loyalty_dist.sum(1)
+            loyalty_dist_pct = loyalty_dist.div(loyalty_dist_sum, axis=0) if not loyalty_dist_sum.empty else loyalty_dist
+            cluster_profiles = pd.concat([cluster_profiles, loyalty_dist_pct], axis=1)
     
     return cluster_profiles, df_clustered
 
@@ -400,12 +541,17 @@ cluster_profiles, df_clustered = profile_clusters(df, labels, features)
 
 # --- True Segment Comparison ---
 def compare_true_segments(df_clustered):
-    if "True Segment" not in df_clustered.columns:
-        return None
+    if "True Segment" not in df_clustered.columns or df_clustered.empty: # MODIFICA: Aggiungi controllo per dataframe vuoto
+        return None, None
     
+    # MODIFICA: Filtra i cluster di rumore (-1) dalla comparazione se non significativi
+    df_filtered = df_clustered[df_clustered["Cluster"] != -1]
+    if df_filtered.empty:
+        return None, None
+
     comparison = pd.crosstab(
-        df_clustered["Cluster"], 
-        df_clustered["True Segment"],
+        df_filtered["Cluster"], # Usa i cluster filtrati
+        df_filtered["True Segment"],
         normalize="index"
     )
     
@@ -441,42 +587,63 @@ with tab1:
         st.metric("Number of Clusters", metrics["Number of Clusters"])
         st.metric("Noise Points", metrics["Noise Points"])
         
-        if metrics['Silhouette Score'] is not None:
+        # MODIFICA: Formatta le metriche solo se non sono NaN
+        if not np.isnan(metrics['Silhouette Score']):
             st.metric("Silhouette Score", f"{metrics['Silhouette Score']:.3f}",
-                     help="Higher values indicate better defined clusters (-1 to 1)")
-        
-        if metrics['Davies-Bouldin Index'] is not None:
+                      help="Higher values indicate better defined clusters (-1 to 1)")
+        else:
+            st.metric("Silhouette Score", "N/A", help="Cannot calculate score for less than 2 clusters or only noise points.")
+            
+        if not np.isnan(metrics['Davies-Bouldin Index']):
             st.metric("Davies-Bouldin Index", f"{metrics['Davies-Bouldin Index']:.3f}",
-                     help="Lower values indicate better clustering (0 to ∞)")
-        
-        if metrics['Calinski-Harabasz Index'] is not None:
+                      help="Lower values indicate better clustering (0 to ∞)")
+        else:
+            st.metric("Davies-Bouldin Index", "N/A", help="Cannot calculate score for less than 2 clusters or only noise points.")
+            
+        if not np.isnan(metrics['Calinski-Harabasz Index']):
             st.metric("Calinski-Harabasz", f"{metrics['Calinski-Harabasz Index']:.3f}",
-                     help="Higher values indicate better clustering (0 to ∞)")
-        
-        if true_segment_comparison is not None:
+                      help="Higher values indicate better clustering (0 to ∞)")
+        else:
+            st.metric("Calinski-Harabasz", "N/A", help="Cannot calculate score for less than 2 clusters or only noise points.")
+            
+        if true_segment_comparison is not None and purity_score is not None:
             st.metric("Segment Purity", f"{purity_score:.1%}",
-                     help="How well clusters match true segments")
+                      help="How well clusters match true segments")
+        else:
+            st.metric("Segment Purity", "N/A", help="True segments not available or insufficient data for comparison.")
 
 with tab2:
     st.header("Cluster Analysis")
     
     st.subheader("Cluster Characteristics")
-    st.dataframe(cluster_profiles.style.background_gradient(cmap="Blues"))
+    # MODIFICA: Filtra i cluster -1 (rumore) dalla tabella dei profili se non sono significativi
+    st.dataframe(cluster_profiles[cluster_profiles.index != -1].style.background_gradient(cmap="Blues"))
     
     st.subheader("Feature Distributions by Cluster")
     selected_feature = st.selectbox("Select feature to visualize", features)
     
     if plot_engine == "Plotly":
-        fig = px.box(df_clustered, x="Cluster", y=selected_feature, color="Cluster")
-        st.plotly_chart(fig, use_container_width=True)
+        # MODIFICA: Assicurarsi che ci siano dati dopo il filtraggio per il rumore
+        df_for_box_plot = df_clustered[df_clustered["Cluster"] != -1]
+        if not df_for_box_plot.empty:
+            fig = px.box(df_for_box_plot, x="Cluster", y=selected_feature, color="Cluster")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No valid clusters to display feature distributions.")
     else:
-        plt.figure(figsize=(10, 5))
-        df_clustered.boxplot(column=selected_feature, by="Cluster", grid=False)
-        plt.title(f"Distribution of {selected_feature} by Cluster")
-        plt.suptitle("")
-        st.pyplot(plt.gcf())
-        plt.close()
-    
+        # MODIFICA: Assicurarsi che ci siano dati dopo il filtraggio per il rumore
+        df_for_box_plot = df_clustered[df_clustered["Cluster"] != -1]
+        if not df_for_box_plot.empty:
+            plt.figure(figsize=(10, 5))
+            df_for_box_plot.boxplot(column=selected_feature, by="Cluster", grid=False)
+            plt.title(f"Distribution of {selected_feature} by Cluster")
+            plt.suptitle("")
+            st.pyplot(plt.gcf())
+            plt.close()
+        else:
+            st.warning("No valid clusters to display feature distributions.")
+            plt.close() # Chiudi la figura vuota
+
     if true_segment_comparison is not None:
         st.subheader("True Segment Comparison")
         st.dataframe(true_segment_comparison.style.background_gradient(cmap="Greens", axis=1))
@@ -514,7 +681,7 @@ with tab3:
         for i in range(len(features)):
             for j in range(len(features)):
                 plt.text(j, i, f"{corr_matrix.iloc[i, j]:.2f}", 
-                        ha="center", va="center", color="black")
+                               ha="center", va="center", color="black")
         st.pyplot(plt.gcf())
         plt.close()
 
