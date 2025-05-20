@@ -14,63 +14,76 @@ st.set_page_config(layout="wide", page_title="Visualizzatore Algoritmi di Cluste
 st.title("🔬 Visualizzatore Interattivo di Algoritmi di Clustering per il Marketing al Supermercato")
 st.markdown("""
 Questa applicazione ti permette di esplorare il funzionamento degli algoritmi di clustering **K-Means** e **DBSCAN**
-su un dataset simulato di clienti di un supermercato, con caratteristiche realistiche e **segmenti più distinti**
-per una migliore visualizzazione degli algoritmi.
-Modifica i parametri per vedere quali segmenti di clienti puoi identificare!
+su un dataset simulato di clienti di un supermercato, con caratteristiche realistiche e **cluster "nascosti"**
+per una scoperta di segmenti meno ovvia.
+Modifica i parametri per vedere quali pattern di clienti emergono!
 """)
 
 # --- Funzione per Generare Dati Sintetici per Marketing (Supermercato) ---
 def generate_customer_data(n_samples, random_state):
     np.random.seed(random_state)
 
-    ages = np.random.randint(18, 71, n_samples)
-    genders = np.random.choice(['Uomo', 'Donna'], n_samples)
+    # Define prototypes for different customer types, aiming for non-obvious clusters
+    # [Age, Income, Visits, Time_on_site]
+    prototypes = [
+        # 1. Young, Tech-Savvy, Moderate Income (e.g., students/early career, active online)
+        [22, 25000, 25, 45],
+        # 2. Established Professionals, High Income, Moderate Digital (e.g., busy families)
+        [40, 60000, 10, 15],
+        # 3. Older, Lower Income, Less Digital (e.g., retirees, traditional shoppers)
+        [65, 30000, 3, 5],
+        # 4. "Digital Seniors": Older, Moderate Income, Surprisingly Active Online
+        [60, 40000, 15, 30],
+        # 5. "High-Roller Digital": Any age, Very High Income, High Digital Engagement (but maybe less frequent visits)
+        [35, 90000, 8, 35],
+        # 6. "Budget-Conscious Online": Young/Middle, Lower Income, High Frequency Online (coupon hunting)
+        [30, 20000, 18, 20]
+    ]
 
-    # Initialize arrays
-    incomes = np.zeros(n_samples)
-    visits = np.zeros(n_samples)
-    time_on_site = np.zeros(n_samples)
+    # Standard deviations for each feature to add variability (adjust as needed for more/less distinct clusters)
+    # [Age_std, Income_std, Visits_std, Time_std]
+    stds = [
+        [4, 5000, 7, 10], # Prototype 1
+        [6, 10000, 4, 7], # Prototype 2
+        [5, 8000, 2, 3],  # Prototype 3
+        [7, 9000, 6, 10], # Prototype 4
+        [10, 15000, 5, 12],# Prototype 5
+        [5, 4000, 6, 8]   # Prototype 6
+    ]
 
-    # Define approximate segment characteristics
-    # Segment 1: Young & Digital (e.g., students/young professionals)
-    mask_s1 = (ages >= 18) & (ages <= 29)
-    incomes[mask_s1] = np.random.normal(22000, 3000, mask_s1.sum())
-    visits[mask_s1] = np.random.normal(20, 5, mask_s1.sum()) # High frequency
-    time_on_site[mask_s1] = np.random.normal(40, 10, mask_s1.sum()) # Longer time
-
-    # Segment 2: Young Professionals / Early Families (more balanced)
-    mask_s2 = (ages >= 30) & (ages <= 45)
-    incomes[mask_s2] = np.random.normal(45000, 7000, mask_s2.sum())
-    visits[mask_s2] = np.random.normal(10, 3, mask_s2.sum()) # Medium frequency
-    time_on_site[mask_s2] = np.random.normal(20, 7, mask_s2.sum()) # Medium time
-
-    # Segment 3: Established Professionals / Mature Families (higher income, moderate digital)
-    mask_s3 = (ages >= 46) & (ages <= 60)
-    incomes[mask_s3] = np.random.normal(65000, 10000, mask_s3.sum())
-    visits[mask_s3] = np.random.normal(5, 2, mask_s3.sum()) # Lower frequency
-    time_on_site[mask_s3] = np.random.normal(12, 5, mask_s3.sum()) # Shorter time
-
-    # Segment 4: Seniors / Less Digital (often lower online engagement)
-    mask_s4 = (ages >= 61) & (ages <= 70)
-    incomes[mask_s4] = np.random.normal(35000, 8000, mask_s4.sum()) # Retirement income
-    visits[mask_s4] = np.random.normal(2, 1, mask_s4.sum()) # Very low frequency
-    time_on_site[mask_s4] = np.random.normal(5, 2, mask_s4.sum()) # Very short time
-
-    # Ensure all data points are assigned a value, if any age range is not covered (shouldn't happen with current ranges)
-    # And apply clipping for realistic bounds
-    incomes = np.clip(incomes, 15000, 150000).astype(int)
-    visits = np.clip(visits, 1, 40).astype(int)
-    time_on_site = np.clip(time_on_site, 1, 70).astype(int) # Time in minutes
-
-    # Create DataFrame for unscaled data
-    df_unscaled = pd.DataFrame({
-        'Età': ages,
-        'Sesso': genders,
-        'Reddito Medio Annuo (€)': incomes,
-        'Frequenza Visite al Sito/App (n/mese)': visits,
-        'Tempo Medio Permanenza sul Sito/App (min)': time_on_site
-    })
+    data = []
+    num_prototypes = len(prototypes)
     
+    # Distribute samples among prototypes, slightly biased towards more common ones
+    samples_per_proto = [n_samples // num_prototypes] * num_prototypes
+    # Adjust for remainder
+    for i in range(n_samples % num_prototypes):
+        samples_per_proto[i] += 1
+
+    for i, proto in enumerate(prototypes):
+        num_current_samples = samples_per_proto[i]
+        
+        ages = np.random.normal(proto[0], stds[i][0], num_current_samples)
+        incomes = np.random.normal(proto[1], stds[i][1], num_current_samples)
+        visits = np.random.normal(proto[2], stds[i][2], num_current_samples)
+        time_on_site = np.random.normal(proto[3], stds[i][3], num_current_samples)
+        
+        # Ensure values are within realistic bounds
+        ages = np.clip(ages, 18, 70).astype(int)
+        incomes = np.clip(incomes, 10000, 180000).astype(int)
+        visits = np.clip(visits, 1, 50).astype(int)
+        time_on_site = np.clip(time_on_site, 1, 90).astype(int)
+
+        genders = np.random.choice(['Uomo', 'Donna'], num_current_samples)
+        
+        for j in range(num_current_samples):
+            data.append([ages[j], genders[j], incomes[j], visits[j], time_on_site[j]])
+
+    df_unscaled = pd.DataFrame(data, columns=['Età', 'Sesso', 'Reddito Medio Annuo (€)', 'Frequenza Visite al Sito/App (n/mese)', 'Tempo Medio Permanenza sul Sito/App (min)'])
+    
+    # Shuffle the DataFrame to mix the prototype-generated samples
+    df_unscaled = df_unscaled.sample(frac=1, random_state=random_state).reset_index(drop=True)
+
     # Select numerical features for clustering and scale them
     numerical_features = ['Età', 'Reddito Medio Annuo (€)', 'Frequenza Visite al Sito/App (n/mese)', 'Tempo Medio Permanenza sul Sito/App (min)']
     X_unscaled_numerical = df_unscaled[numerical_features].values
@@ -81,7 +94,6 @@ def generate_customer_data(n_samples, random_state):
     return X_scaled, df_unscaled, numerical_features # Return numerical features list for consistency
 
 # --- Mapping per Nomi Features Marketing ---
-# These are the actual column names in the df_unscaled numerical part
 # This is now generated dynamically from the numerical_features list
 # as returned by generate_customer_data
 feature_names_mapping = {
@@ -121,15 +133,15 @@ with st.sidebar:
 
     st.subheader(f"4. Parametri {algoritmo_scelto}")
     if algoritmo_scelto == "K-Means":
-        # Changed default K to 4, as we now have 4 more distinct simulated groups
-        k_clusters_param = st.slider("Numero di Segmenti (K) da Trovare", 1, 10, 4,
+        # Start with a K that might reveal some of the prototypes, e.g., 4 or 5
+        k_clusters_param = st.slider("Numero di Segmenti (K) da Trovare", 1, 10, 5,
                                      help="Quanti segmenti di clienti l'algoritmo K-Means cercherà.")
         kmeans_random_state_param = st.slider("Seed K-Means (per inizializzazione)", 0, 100, 1,
                                              help="Controlla l'inizializzazione dei centroidi per la riproducibilità. Cambialo per vedere diverse configurazioni iniziali.")
     elif algoritmo_scelto == "DBSCAN":
-        # Adjusted default eps and min_samples for potentially clearer clusters
-        eps_param = st.slider("Epsilon (eps) - Raggio di Vicinato", 0.05, 2.0, 0.4, step=0.01,
-                             help="Distanza massima per considerare due 'clienti' vicini. Dato che i dati sono scalati internamente, un valore tra 0.3 e 0.7 funziona spesso bene.")
+        # Adjusted default eps and min_samples for more structured data
+        eps_param = st.slider("Epsilon (eps) - Raggio di Vicinato", 0.05, 2.0, 0.5, step=0.01,
+                             help="Distanza massima per considerare due 'clienti' vicini. Dato che i dati sono scalati internamente, un valore tra 0.4 e 0.8 è spesso un buon punto di partenza per questi dati.")
         min_samples_param = st.slider("Min Samples - Densità Minima", 1, 50, 10,
                                      help="Numero minimo di 'clienti' in un vicinato per formare un segmento denso. I punti sotto questa soglia potrebbero essere considerati rumore.")
 
@@ -143,15 +155,15 @@ st.subheader("💡 Contesto Marketing del Dataset 'Clienti Simulati del Supermer
 st.info("""
     Questo dataset simula una base clienti di un supermercato, con caratteristiche come **Età**, **Sesso**, **Reddito Medio Annuo**,
     **Frequenza Visite al Sito/App** e **Tempo Medio di Permanenza sul Sito/App**.
-    I dati sono stati generati per riflettere correlazioni realistiche, ma con **segmenti più distinti** rispetto a dati puramente reali,
-    per scopi dimostrativi. Puoi aspettarti di trovare cluster che rappresentano:
-    * **Giovani Clienti Digitali:** Età più bassa, reddito variabile (spesso inferiore), **alta** attività online.
-    * **Giovani Professionisti/Famiglie:** Età media, reddito medio/alto, attività online **moderata**.
-    * **Professionisti Affermati/Famiglie Mature:** Età più avanzata, reddito più alto, attività online **bassa**.
-    * **Clienti Senior/Tradizionali:** Età più avanzata, reddito da pensione, **minima** propensione all'online.
+    I dati sono stati generati per creare **segmenti di clienti con interazioni più complesse e meno ovvie** tra le variabili,
+    permettendo agli algoritmi di clustering di **scoprire pattern nascosti**.
+    Puoi aspettarti di trovare combinazioni interessanti come:
+    * **Giovani Digitali con Stili di Vita Diversi:** Alcuni con reddito basso (studenti), altri con reddito più alto (startup/influencer).
+    * **Senior Connessi:** Età avanzata, ma sorprendentemente attivi e con una buona permanenza online.
+    * **Clienti Ad Alto Reddito Ma Poco Frequenti:** Spesa elevata, ma meno tempo sul sito.
 
-    L'obiettivo del clustering è **identificare questi segmenti nascosti** per sviluppare strategie di marketing più efficaci:
-    promozioni mirate, personalizzazione dell'esperienza in-store vs. online, gestione della fedeltà e acquisizione di nuovi clienti.
+    L'obiettivo del clustering è **identificare questi segmenti emergenti** per sviluppare strategie di marketing più efficaci e mirate,
+    andando oltre le segmentazioni più tradizionali e superficiali.
 """)
 st.markdown("---")
 
@@ -167,7 +179,7 @@ with st.expander("📊 Visualizza il Dataset Completo dei 'Clienti' (Dati Origin
     st.download_button(
         label="Scarica il Dataset Completo (CSV)",
         data=csv_buffer.getvalue(),
-        file_name="clienti_supermercato_simulati.csv",
+        file_name="clienti_supermercato_simulati_nascosti.csv",
         mime="text/csv"
     )
     st.info("Nota: Gli algoritmi di clustering lavorano sulle **caratteristiche numeriche scalate** (Età, Reddito, Frequenza, Tempo) per garantire che tutte abbiano la stessa importanza, indipendentemente dalla loro scala originale. La colonna 'Sesso' è inclusa solo per contesto e non viene usata direttamente nel clustering bidimensionale, ma sarebbe rilevante in un'analisi multidimensionale.")
