@@ -25,7 +25,7 @@ def generate_retail_data():
     n = 500  # Meno dati per maggiore velocità
     
     data = {
-        "Età": np.round(np.clip(np.random.normal(45, 15, n), 18, 80),
+        "Età": np.round(np.clip(np.random.normal(45, 15, n), 18, 80)),
         "Reddito (k€)": np.round(np.clip(np.random.normal(50, 20, n), 20, 150)),
         "Visite/Mese": np.random.poisson(8, n),
         "Spesa Media (€)": np.round(np.clip(np.random.normal(80, 30, n), 10, 200)),
@@ -66,8 +66,7 @@ with st.sidebar:
         min_samples = st.slider("Punti minimi:", 2, 10, 5)
     
     # Pulsante di esecuzione
-    if st.button("▶️ Esegui Clustering", type="primary"):
-        pass  # La logica verrà eseguita dopo
+    run_clustering = st.button("▶️ Esegui Clustering", type="primary")
 
 # Sezione 1: Anteprima dati
 st.header("📋 Anteprima Dati")
@@ -75,7 +74,7 @@ st.write("Ecco le prime 10 righe del dataset:")
 st.dataframe(df.head(10))
 
 # Sezione 2: Esecuzione clustering (solo se premuto il pulsante)
-if st.sidebar.button:
+if run_clustering:
     st.header("🎯 Risultati Clustering")
     
     with st.spinner('Sto analizzando i dati...'):
@@ -166,4 +165,4 @@ with st.expander("Esempi pratici"):
 
 # Footer
 st.markdown("---")
-st.markdown("Strumento didattico per corsi di Data Science - © 2023")
+st.markdown("Strumento didattico per corsi di Data Science - © 2025")
