@@ -1,277 +1,256 @@
 import streamlit as st
-import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.datasets import make_blobs
+import pandas as pd
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans, DBSCAN # AgglomerativeClustering rimosso come richiesto
-from sklearn.decomposition import PCA, TSNE
-from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 import plotly.express as px
+import io
+from scipy.cluster.hierarchy import dendrogram, linkage
+import warnings
+warnings.filterwarnings('ignore')
 
-# --- Configurazione Pagina Streamlit ---
-st.set_page_config(layout="wide", page_title="Analisi Avanzata della Segmentazione Clienti", page_icon="🛒")
+# --- Configurazione Pagina ---
+st.set_page_config(layout="wide", page_title="Advanced Clustering for Retail Analytics", page_icon="🛒")
 
 # --- Titolo e Introduzione ---
-st.title("🛒 Analisi Avanzata della Segmentazione Clienti per il Retail")
+st.title("🛒 Advanced Customer Segmentation for Retail Analytics")
 st.markdown("""
-Questa applicazione interattiva ti permette di esplorare algoritmi di clustering avanzati su dati simulati di clienti di supermercati.
-Scopri segmenti di clienti nascosti e ottieni insight utili per strategie di marketing mirate.
+This interactive application allows you to explore advanced clustering algorithms on simulated supermarket customer data. 
+Discover hidden customer segments and gain actionable insights for targeted marketing strategies.
 """)
 
-# --- Controlli della Sidebar ---
+# --- Sidebar Controls ---
 with st.sidebar:
-    st.header("⚙️ Configurazione dell'Esperimento")
-
-    st.subheader("1. Generazione Dati")
-    # Numero massimo di clienti ridotto a 5000 come richiesto
-    n_campioni = st.slider("Numero di clienti simulati", 500, 5000, 1000, step=100)
-    livello_rumore = st.slider("Livello di rumore (%)", 0, 30, 5)
-    stato_casuale = st.slider("Seed casuale per la riproducibilità", 0, 100, 42)
-
-    st.subheader("2. Selezione Algoritmo")
-    # Opzione "Gerarchico" rimossa come richiesto
-    algoritmo = st.radio("Algoritmo di Clustering:",
-                         ["K-Means", "DBSCAN"],
-                         index=0) # Default a K-Means
-
-    # MODIFICA: Inizializza tutte le variabili dei parametri degli algoritmi con valori di default.
-    # Questo assicura che le variabili esistano sempre, anche se i loro widget non sono visualizzati.
-    n_clusters = 6 # Default per K-Means
-    init_method = "k-means++" # Default per K-Means
-    max_iter = 300 # Default per K-Means
-
-    eps = 0.5 # Default per DBSCAN
-    min_samples = 10 # Default per DBSCAN
-    metric = "euclidean" # Default per DBSCAN
-
-    if algoritmo == "K-Means":
-        n_clusters = st.slider("Numero di cluster (K)", 2, 15, 6)
-        init_method = st.selectbox("Metodo di inizializzazione",
-                                  ["k-means++", "random"])
-        max_iter = st.slider("Max iterazioni", 100, 500, 300)
-
-    elif algoritmo == "DBSCAN":
-        eps = st.slider("Epsilon (raggio di vicinato)", 0.1, 2.0, 0.5, step=0.05)
-        min_samples = st.slider("Campioni minimi", 1, 50, 10)
-        metric = st.selectbox("Metrica di distanza",
+    st.header("⚙️ Experiment Configuration")
+    
+    st.subheader("1. Data Generation")
+    n_samples = st.slider("Number of simulated customers", 500, 10000, 3000, step=100)
+    random_state = st.slider("Random seed for reproducibility", 0, 100, 42)
+    noise_level = st.slider("Noise level (%)", 0, 30, 5)
+    
+    st.subheader("2. Algorithm Selection")
+    algorithm = st.radio("Clustering Algorithm:", 
+                         ["K-Means", "DBSCAN", "Hierarchical"], 
+                         index=0)
+    
+    if algorithm == "K-Means":
+        n_clusters = st.slider("Number of clusters (K)", 2, 15, 6)
+        init_method = st.selectbox("Initialization method", 
+                                 ["k-means++", "random"])
+        max_iter = st.slider("Max iterations", 100, 500, 300)
+        
+    elif algorithm == "DBSCAN":
+        eps = st.slider("Epsilon (neighborhood radius)", 0.1, 2.0, 0.5, step=0.05)
+        min_samples = st.slider("Minimum samples", 1, 50, 10)
+        metric = st.selectbox("Distance metric", 
+                            ["euclidean", "cosine", "manhattan"])
+        
+    elif algorithm == "Hierarchical":
+        n_clusters = st.slider("Number of clusters", 2, 15, 6)
+        linkage_method = st.selectbox("Linkage method", 
+                                    ["ward", "complete", "average", "single"])
+        affinity = st.selectbox("Affinity metric", 
                                ["euclidean", "cosine", "manhattan"])
-
-    st.subheader("3. Visualizzazione")
-    dim_reduction = st.selectbox("Riduzione di dimensionalità",
-                                 ["PCA", "t-SNE", "Caratteristiche Originali"])
-    plot_engine = st.selectbox("Motore di plotting",
-                               ["Matplotlib", "Plotly"])
-
+    
+    st.subheader("3. Visualization")
+    dim_reduction = st.selectbox("Dimensionality reduction", 
+                               ["PCA", "t-SNE", "Original Features"])
+    plot_engine = st.selectbox("Plotting engine", 
+                             ["Matplotlib", "Plotly"])
+    
     st.markdown("---")
-    if st.button("🔄 Esegui Analisi"):
+    if st.button("🔄 Run Analysis"):
         st.experimental_rerun()
 
-# --- Generazione Dati ---
+# --- Data Generation ---
 @st.cache_data
-def genera_dati_retail(n_campioni, livello_rumore, stato_casuale):
-    np.random.seed(stato_casuale)
-
-    # Definisci 6 archetipi di clienti con comportamenti di retail più realistici
-    archetipi = {
-        "Giovani Professionisti Urbani": {
-            "eta": (28, 5), "reddito": (55000, 12000),
-            "visite_online_mensili": (18, 5), "dimensione_cestino_media": (45, 10),
-            "pct_acquisti_bio": (0.35, 0.1), "sensibilita_sconto": (0.6, 0.15),
-            "visite_negozio_mensili": (4, 2), "lealta_brand": (0.7, 0.1)
+def generate_retail_data(n_samples, noise_level, random_state):
+    np.random.seed(random_state)
+    
+    # Define 6 customer archetypes with more realistic retail behaviors
+    archetypes = {
+        "Young Urban Professionals": {
+            "age": (28, 5), "income": (55000, 12000), 
+            "online_visits": (18, 5), "basket_size": (45, 10),
+            "organic_pct": (0.35, 0.1), "discount_sensitivity": (0.6, 0.15),
+            "store_visits": (4, 2), "brand_loyalty": (0.7, 0.1)
         },
-        "Famiglie con Budget Limitato": {
-            "eta": (38, 6), "reddito": (45000, 8000),
-            "visite_online_mensili": (8, 3), "dimensione_cestino_media": (75, 15),
-            "pct_acquisti_bio": (0.15, 0.08), "sensibilita_sconto": (0.9, 0.05),
-            "visite_negozio_mensili": (12, 3), "lealta_brand": (0.4, 0.15)
+        "Budget Families": {
+            "age": (38, 6), "income": (45000, 8000),
+            "online_visits": (8, 3), "basket_size": (75, 15),
+            "organic_pct": (0.15, 0.08), "discount_sensitivity": (0.9, 0.05),
+            "store_visits": (12, 3), "brand_loyalty": (0.4, 0.15)
         },
-        "Acquirenti Premium": {
-            "eta": (45, 8), "reddito": (95000, 20000),
-            "visite_online_mensili": (12, 4), "dimensione_cestino_media": (120, 25),
-            "pct_acquisti_bio": (0.5, 0.15), "sensibilita_sconto": (0.3, 0.1),
-            "visite_negozio_mensili": (6, 2), "lealta_brand": (0.85, 0.08)
+        "Premium Shoppers": {
+            "age": (45, 8), "income": (95000, 20000),
+            "online_visits": (12, 4), "basket_size": (120, 25),
+            "organic_pct": (0.5, 0.15), "discount_sensitivity": (0.3, 0.1),
+            "store_visits": (6, 2), "brand_loyalty": (0.85, 0.08)
         },
-        "Coppie in Pensione": {
-            "eta": (65, 5), "reddito": (40000, 10000),
-            "visite_online_mensili": (4, 2), "dimensione_cestino_media": (55, 12),
-            "pct_acquisti_bio": (0.25, 0.1), "sensibilita_sconto": (0.7, 0.1),
-            "visite_negozio_mensili": (8, 2), "lealta_brand": (0.6, 0.12)
+        "Retired Couples": {
+            "age": (65, 5), "income": (40000, 10000),
+            "online_visits": (4, 2), "basket_size": (55, 12),
+            "organic_pct": (0.25, 0.1), "discount_sensitivity": (0.7, 0.1),
+            "store_visits": (8, 2), "brand_loyalty": (0.6, 0.12)
         },
-        "Appassionati di Salute": {
-            "eta": (35, 7), "reddito": (60000, 15000),
-            "visite_online_mensili": (15, 4), "dimensione_cestino_media": (65, 15),
-            "pct_acquisti_bio": (0.75, 0.1), "sensibilita_sconto": (0.5, 0.15),
-            "visite_negozio_mensili": (6, 2), "lealta_brand": (0.65, 0.12)
+        "Health Enthusiasts": {
+            "age": (35, 7), "income": (60000, 15000),
+            "online_visits": (15, 4), "basket_size": (65, 15),
+            "organic_pct": (0.75, 0.1), "discount_sensitivity": (0.5, 0.15),
+            "store_visits": (6, 2), "brand_loyalty": (0.65, 0.12)
         },
-        "Acquirenti di Convenienza": {
-            "eta": (32, 8), "reddito": (48000, 10000),
-            "visite_online_mensili": (25, 6), "dimensione_cestino_media": (30, 8),
-            "pct_acquisti_bio": (0.2, 0.1), "sensibilita_sconto": (0.8, 0.1),
-            "visite_negozio_mensili": (2, 1), "lealta_brand": (0.3, 0.15)
+        "Convenience Shoppers": {
+            "age": (32, 8), "income": (48000, 10000),
+            "online_visits": (25, 6), "basket_size": (30, 8),
+            "organic_pct": (0.2, 0.1), "discount_sensitivity": (0.8, 0.1),
+            "store_visits": (2, 1), "brand_loyalty": (0.3, 0.15)
         }
     }
-
+    
     data = []
-    campioni_per_tipo = n_campioni // len(archetipi)
-
-    for nome_archetipo, params in archetipi.items():
-        n = campioni_per_tipo
-
-        # Genera i dati del cluster principale
-        eta = np.random.normal(params["eta"][0], params["eta"][1], n)
-        reddito = np.random.normal(params["reddito"][0], params["reddito"][1], n)
-        visite_online_mensili = np.random.poisson(params["visite_online_mensili"][0], n)
-        dimensione_cestino_media = np.abs(np.random.normal(params["dimensione_cestino_media"][0], params["dimensione_cestino_media"][1], n))
-        pct_acquisti_bio = np.clip(np.random.normal(params["pct_acquisti_bio"][0], params["pct_acquisti_bio"][1], n), 0, 1)
-        sensibilita_sconto = np.clip(np.random.normal(params["sensibilita_sconto"][0], params["sensibilita_sconto"][1], n), 0, 1)
-        visite_negozio_mensili = np.random.poisson(params["visite_negozio_mensili"][0], n)
-        lealta_brand = np.clip(np.random.normal(params["lealta_brand"][0], params["lealta_brand"][1], n), 0, 1)
-
-        # Aggiungi un po' di rumore
-        maschera_rumore = np.random.random(n) < (livello_rumore/100)
-
-        if maschera_rumore.any():
-            temp_eta = eta[maschera_rumore].copy()
-            temp_reddito = reddito[maschera_rumore].copy()
-            temp_visite_online_mensili = visite_online_mensili[maschera_rumore].copy()
-            temp_dimensione_cestino_media = dimensione_cestino_media[maschera_rumore].copy()
-            temp_pct_acquisti_bio = pct_acquisti_bio[maschera_rumore].copy()
-            temp_sensibilita_sconto = sensibilita_sconto[maschera_rumore].copy()
-            temp_visite_negozio_mensili = visite_negozio_mensili[maschera_rumore].copy()
-            temp_lealta_brand = lealta_brand[maschera_rumore].copy()
-
-            fattore_rumore_singolo = 1 + np.random.normal(0, 0.5, size=temp_eta.shape)
-
-            eta[maschera_rumore] = temp_eta * fattore_rumore_singolo
-            reddito[maschera_rumore] = temp_reddito * fattore_rumore_singolo
-            visite_online_mensili[maschera_rumore] = np.abs(temp_visite_online_mensili * fattore_rumore_singolo)
-            dimensione_cestino_media[maschera_rumore] = np.abs(temp_dimensione_cestino_media * fattore_rumore_singolo)
-            pct_acquisti_bio[maschera_rumore] = np.clip(temp_pct_acquisti_bio * fattore_rumore_singolo, 0, 1)
-            sensibilita_sconto[maschera_rumore] = np.clip(temp_sensibilita_sconto * fattore_rumore_singolo, 0, 1)
-            visite_negozio_mensili[maschera_rumore] = np.abs(temp_visite_negozio_mensili * fattore_rumore_singolo)
-            lealta_brand[maschera_rumore] = np.clip(temp_lealta_brand * fattore_rumore_singolo, 0, 1)
-
-        # Crea i record
+    samples_per_type = n_samples // len(archetypes)
+    
+    for arch_name, params in archetypes.items():
+        n = samples_per_type
+        
+        # Generate core cluster data
+        age = np.random.normal(params["age"][0], params["age"][1], n)
+        income = np.random.normal(params["income"][0], params["income"][1], n)
+        online_visits = np.random.poisson(params["online_visits"][0], n)
+        basket_size = np.abs(np.random.normal(params["basket_size"][0], params["basket_size"][1], n))
+        organic_pct = np.clip(np.random.normal(params["organic_pct"][0], params["organic_pct"][1], n), 0, 1)
+        discount_sensitivity = np.clip(np.random.normal(params["discount_sensitivity"][0], params["discount_sensitivity"][1], n), 0, 1)
+        store_visits = np.random.poisson(params["store_visits"][0], n)
+        brand_loyalty = np.clip(np.random.normal(params["brand_loyalty"][0], params["brand_loyalty"][1], n), 0, 1)
+        
+        # Add some noise
+        noise_mask = np.random.random(n) < (noise_level/100)
+        noise_factor = 1 + np.random.normal(0, 0.5, size=(noise_mask.sum(), len(params)))
+        
+        # Apply noise
+        if noise_mask.any():
+            noisy_data = np.column_stack([age[noise_mask], income[noise_mask], 
+                                        online_visits[noise_mask], basket_size[noise_mask],
+                                        organic_pct[noise_mask], discount_sensitivity[noise_mask],
+                                        store_visits[noise_mask], brand_loyalty[noise_mask]])
+            
+            noisy_data = noisy_data * noise_factor
+            
+            age[noise_mask] = noisy_data[:,0]
+            income[noise_mask] = noisy_data[:,1]
+            online_visits[noise_mask] = np.abs(noisy_data[:,2])
+            basket_size[noise_mask] = np.abs(noisy_data[:,3])
+            organic_pct[noise_mask] = np.clip(noisy_data[:,4], 0, 1)
+            discount_sensitivity[noise_mask] = np.clip(noisy_data[:,5], 0, 1)
+            store_visits[noise_mask] = np.abs(noisy_data[:,6])
+            brand_loyalty[noise_mask] = np.clip(noisy_data[:,7], 0, 1)
+        
+        # Create records
         for i in range(n):
-            genere = np.random.choice(["Maschio", "Femmina"], p=[0.45, 0.55])
-            carta_fedelta = np.random.choice([True, False], p=[0.7, 0.3])
-
+            gender = np.random.choice(["Male", "Female"], p=[0.45, 0.55])
+            member_card = np.random.choice([True, False], p=[0.7, 0.3])
+            
             data.append([
-                max(18, min(80, int(eta[i]))),
-                genere,
-                max(20000, min(200000, int(reddito[i]))),
-                max(0, int(visite_online_mensili[i])),
-                max(10, float(dimensione_cestino_media[i])),
-                float(pct_acquisti_bio[i]),
-                float(sensibilita_sconto[i]),
-                max(0, int(visite_negozio_mensili[i])),
-                float(lealta_brand[i]),
-                carta_fedelta,
-                nome_archetipo  # Segmento vero per la valutazione
+                max(18, min(80, int(age[i]))),
+                gender,
+                max(20000, min(200000, int(income[i]))),
+                max(0, int(online_visits[i])),
+                max(10, float(basket_size[i])),
+                float(organic_pct[i]),
+                float(discount_sensitivity[i]),
+                max(0, int(store_visits[i])),
+                float(brand_loyalty[i]),
+                member_card,
+                arch_name  # True segment for evaluation
             ])
-
-    # Crea DataFrame
+    
+    # Create DataFrame
     df = pd.DataFrame(data, columns=[
-        "Età", "Genere", "Reddito Annuo ($)",
-        "Visite Online Mensili", "Dimensione Cestino Media ($)",
-        "Percentuale Acquisti Bio", "Sensibilità allo Sconto",
-        "Visite Mensili al Negozio", "Punteggio Lealtà Brand",
-        "Membro Carta Fedeltà", "Segmento Vero"
+        "Age", "Gender", "Annual Income ($)", 
+        "Monthly Online Visits", "Avg Basket Size ($)",
+        "Organic Purchase %", "Discount Sensitivity",
+        "Monthly Store Visits", "Brand Loyalty Score",
+        "Loyalty Card Member", "True Segment"
     ])
-
-    # Mischia i dati
-    df = df.sample(frac=1, random_state=stato_casuale).reset_index(drop=True)
-
-    # Prepara le caratteristiche per il clustering
-    caratteristiche = [
-        "Età", "Reddito Annuo ($)", "Visite Online Mensili",
-        "Dimensione Cestino Media ($)", "Percentuale Acquisti Bio",
-        "Sensibilità allo Sconto", "Visite Mensili al Negozio",
-        "Punteggio Lealtà Brand"
+    
+    # Shuffle data
+    df = df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    
+    # Prepare features for clustering
+    features = [
+        "Age", "Annual Income ($)", "Monthly Online Visits", 
+        "Avg Basket Size ($)", "Organic Purchase %", 
+        "Discount Sensitivity", "Monthly Store Visits", 
+        "Brand Loyalty Score"
     ]
-
-    X = df[caratteristiche].copy()
+    
+    X = df[features].copy()
     scaler = StandardScaler()
-    X_scalato = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(X)
+    
+    return df, X_scaled, features
 
-    return df, X_scalato, caratteristiche
+# Generate data
+df, X_scaled, features = generate_retail_data(n_samples, noise_level, random_state)
 
-# Genera dati
-df, X_scalato, caratteristiche = genera_dati_retail(n_campioni, livello_rumore, stato_casuale)
-
-# --- Riduzione Dimensionalità ---
+# --- Dimensionality Reduction ---
 @st.cache_data
-def riduci_dimensioni(X, metodo, stato_casuale):
-    if metodo == "PCA":
-        n_componenti_pca = min(X.shape[1], 2)
-        if n_componenti_pca < 2:
-            st.warning("Non abbastanza caratteristiche per PCA (richiede almeno 2). Usando la prima caratteristica disponibile.")
-            return X[:, :1], f"PCA (Componente 1)"
-        riduttore = PCA(n_components=n_componenti_pca, random_state=stato_casuale)
-        ridotto = riduttore.fit_transform(X)
-        varianza_spiegata = riduttore.explained_variance_ratio_.sum() * 100
-        return ridotto, f"PCA (Varianza Spiegata: {varianza_spiegata:.1f}%)"
-    elif metodo == "t-SNE":
-        perplexity_val = min(30, len(X) - 1)
-        if perplexity_val <= 1:
-            st.warning("Non abbastanza campioni per t-SNE (richiede almeno 2 campioni). Usando le caratteristiche originali.")
-            return X[:, :2], "Caratteristiche Originali (Prime 2)"
-        riduttore = TSNE(n_components=2, random_state=stato_casuale, perplexity=perplexity_val)
-        ridotto = riduttore.fit_transform(X)
-        return ridotto, "t-SNE"
-    else: # Caratteristiche Originali
-        if X.shape[1] < 2:
-            st.warning("Non abbastanza caratteristiche originali per un grafico 2D. Usando la prima caratteristica disponibile.")
-            return X[:, :1], "Caratteristiche Originali (Prima 1)"
-        return X[:, :2], "Caratteristiche Originali (Prime 2)"
+def reduce_dimensions(X, method, random_state):
+    if method == "PCA":
+        reducer = PCA(n_components=2, random_state=random_state)
+        reduced = reducer.fit_transform(X)
+        explained_var = reducer.explained_variance_ratio_.sum() * 100
+        return reduced, f"PCA (Variance Explained: {explained_var:.1f}%)"
+    elif method == "t-SNE":
+        reducer = TSNE(n_components=2, random_state=random_state, perplexity=30)
+        reduced = reducer.fit_transform(X)
+        return reduced, "t-SNE"
+    else:
+        # Use first two original features
+        return X[:, :2], "Original Features (First 2)"
 
-X_ridotto, metodo_riduzione = riduci_dimensioni(X_scalato, dim_reduction, stato_casuale)
+X_reduced, reduction_method = reduce_dimensions(X_scaled, dim_reduction, random_state)
 
 # --- Clustering ---
 @st.cache_data
-def esegui_clustering(X, algoritmo, params, stato_casuale):
-    etichette = np.array([]) # Inizializza etichette per ogni caso
-    modello = None
-    centri = None
+def perform_clustering(X, algorithm, params, random_state):
+    if algorithm == "K-Means":
+        model = KMeans(
+            n_clusters=params['n_clusters'],
+            init=params['init_method'],
+            max_iter=params['max_iter'],
+            random_state=random_state,
+            n_init='auto'
+        )
+        labels = model.fit_predict(X)
+        centers = model.cluster_centers_ if hasattr(model, 'cluster_centers_') else None
+        
+    elif algorithm == "DBSCAN":
+        model = DBSCAN(
+            eps=params['eps'],
+            min_samples=params['min_samples'],
+            metric=params['metric']
+        )
+        labels = model.fit_predict(X)
+        centers = None
+        
+    elif algorithm == "Hierarchical":
+        model = AgglomerativeClustering(
+            n_clusters=params['n_clusters'],
+            affinity=params['affinity'],
+            linkage=params['linkage_method']
+        )
+        labels = model.fit_predict(X)
+        centers = None
+    
+    return labels, model, centers
 
-    if X.shape[0] == 0:
-        st.warning("Nessun punto dati da clusterizzare. Si prega di aumentare il 'Numero di clienti simulati'.")
-        return np.array([-1]*len(X)), None, None # Restituisce tutti come rumore
-
-    if algoritmo == "K-Means":
-        if params['n_clusters'] >= X.shape[0]:
-            st.warning(f"K-Means: Il numero di cluster ({params['n_clusters']}) deve essere inferiore al numero di campioni ({X.shape[0]}). Impostato a 1 cluster.")
-            etichette = np.zeros(X.shape[0], dtype=int)
-            centri = np.mean(X, axis=0).reshape(1, -1) if X.shape[0] > 0 else np.array([])
-        else:
-            modello = KMeans(
-                n_clusters=params['n_clusters'],
-                init=params['init_method'],
-                max_iter=params['max_iter'],
-                random_state=stato_casuale,
-                n_init='auto'
-            )
-            etichette = modello.fit_predict(X)
-            centri = modello.cluster_centers_ if hasattr(modello, 'cluster_centers_') else None
-
-    elif algoritmo == "DBSCAN":
-        if params['min_samples'] >= X.shape[0] or params['eps'] <= 0:
-             st.warning(f"DBSCAN: Parametri non validi (min_samples={params['min_samples']}, eps={params['eps']}). Tutti i punti saranno rumore o assegnati a un singolo cluster.")
-             etichette = np.array([-1]*X.shape[0]) # Tutti rumore
-        else:
-            modello = DBSCAN(
-                eps=params['eps'],
-                min_samples=params['min_samples'],
-                metric=params['metric']
-            )
-            etichette = modello.fit_predict(X)
-            # DBSCAN non ha centri di cluster espliciti come K-Means
-            centri = None
-
-    return etichette, modello, centri
-
-# Prepara i parametri dell'algoritmo
-parametri_algo_selezionato = {
+# Prepare algorithm parameters
+algo_params = {
     "K-Means": {
         'n_clusters': n_clusters,
         'init_method': init_method,
@@ -281,310 +260,321 @@ parametri_algo_selezionato = {
         'eps': eps,
         'min_samples': min_samples,
         'metric': metric
+    },
+    "Hierarchical": {
+        'n_clusters': n_clusters,
+        'affinity': affinity,
+        'linkage_method': linkage_method
     }
 }
 
-etichette, modello, centri = esegui_clustering(
-    X_scalato,
-    algoritmo,
-    parametri_algo_selezionato[algoritmo],
-    stato_casuale
+labels, model, centers = perform_clustering(
+    X_scaled, 
+    algorithm, 
+    algo_params[algorithm], 
+    random_state
 )
 
-# --- Metriche di Valutazione ---
-def calcola_metriche_di_valutazione(X, etichette):
-    metriche = {}
-
-    # Calcola le metriche solo se ci sono almeno 2 cluster e più di 1 campione
-    # e se non tutti i punti sono rumore (-1)
-    etichette_uniche = set(etichette)
-    n_cluster_reali = len(etichette_uniche) - (1 if -1 in etichette_uniche else 0)
-
-    if n_cluster_reali > 1 and len(etichette) > 1 and not all(l == -1 for l in etichette):
-        try:
-            metriche['Silhouette Score'] = silhouette_score(X, etichette)
-        except Exception:
-            metriche['Silhouette Score'] = np.nan
-
-        try:
-            metriche['Indice Davies-Bouldin'] = davies_bouldin_score(X, etichette)
-        except Exception:
-            metriche['Indice Davies-Bouldin'] = np.nan
-
-        try:
-            metriche['Indice Calinski-Harabasz'] = calinski_harabasz_score(X, etichette)
-        except Exception:
-            metriche['Indice Calinski-Harabasz'] = np.nan
+# --- Evaluation Metrics ---
+def calculate_metrics(X, labels):
+    metrics = {}
+    
+    if len(set(labels)) > 1:
+        metrics['Silhouette Score'] = silhouette_score(X, labels)
+        metrics['Davies-Bouldin Index'] = davies_bouldin_score(X, labels)
+        metrics['Calinski-Harabasz Index'] = calinski_harabasz_score(X, labels)
     else:
-        metriche['Silhouette Score'] = np.nan
-        metriche['Indice Davies-Bouldin'] = np.nan
-        metriche['Indice Calinski-Harabasz'] = np.nan
+        metrics['Silhouette Score'] = None
+        metrics['Davies-Bouldin Index'] = None
+        metrics['Calinski-Harabasz Index'] = None
+    
+    # Cluster counts
+    unique, counts = np.unique(labels, return_counts=True)
+    metrics['Cluster Distribution'] = dict(zip(unique, counts))
+    metrics['Number of Clusters'] = len(unique) - (1 if -1 in unique else 0)
+    metrics['Noise Points'] = counts[unique == -1][0] if -1 in unique else 0
+    
+    return metrics
 
-    # Conteggio cluster
-    unique, counts = np.unique(etichette, return_counts=True)
-    metriche['Distribuzione Cluster'] = dict(zip(unique, counts))
-    metriche['Numero di Cluster Rilevati'] = n_cluster_reali
-    metriche['Punti di Rumore'] = counts[unique == -1][0] if -1 in unique else 0
+metrics = calculate_metrics(X_scaled, labels)
 
-    return metriche
-
-metriche = calcola_metriche_di_valutazione(X_scalato, etichette)
-
-# --- Visualizzazione ---
-def crea_grafico_cluster(X, etichette, centri, metodo, motore, df_originale):
-    if X.shape[1] < 2:
-        st.warning(f"Il metodo di riduzione di dimensionalità '{metodo}' ha prodotto meno di 2 dimensioni. Impossibile creare un grafico a dispersione 2D.")
-        return None
-
-    df_plot = pd.DataFrame({
+# --- Visualization ---
+def create_cluster_plot(X, labels, centers, method, engine):
+    plot_df = pd.DataFrame({
         "x": X[:, 0],
         "y": X[:, 1],
-        "cluster": etichette,
-        "dimensione_punto": df_originale["Dimensione Cestino Media ($)"].fillna(0).astype(float) / 10
+        "cluster": labels,
+        "size": df["Avg Basket Size ($)"] / 10  # Scale for visualization
     })
-
-    df_plot['cluster_str'] = df_plot['cluster'].astype(str)
-
-    if motore == "Plotly":
+    
+    if engine == "Plotly":
         fig = px.scatter(
-            df_plot, x="x", y="y", color="cluster_str",
-            size="dimensione_punto", hover_data={
+            plot_df, x="x", y="y", color="cluster",
+            size="size", hover_data={
                 "x": False, "y": False,
-                "Età": df_originale["Età"],
-                "Reddito": df_originale["Reddito Annuo ($)"],
-                "Visite Online": df_originale["Visite Online Mensili"],
-                "Dimensione Cestino": df_originale["Dimensione Cestino Media ($)"]
+                "Age": df["Age"],
+                "Income": df["Annual Income ($)"],
+                "Online Visits": df["Monthly Online Visits"],
+                "Basket Size": df["Avg Basket Size ($)"]
             },
-            title=f"Segmenti di Clienti ({metodo})",
-            labels={"x": "Componente 1", "y": "Componente 2"},
-            color_discrete_map={'-1': 'grey'}, # Colora il rumore di grigio
-            color_discrete_sequence=px.colors.qualitative.Plotly
+            title=f"Customer Segments ({method})",
+            labels={"x": "Component 1", "y": "Component 2"},
+            color_continuous_scale=px.colors.qualitative.Plotly
         )
-
-        if centri is not None and centri.shape[1] >= 2:
+        
+        if centers is not None:
+            centers_df = pd.DataFrame({
+                "x": centers[:, 0],
+                "y": centers[:, 1],
+                "cluster": ["Center"] * len(centers)
+            })
             fig.add_scatter(
-                x=centri[:, 0], y=centri[:, 1],
+                x=centers_df["x"], y=centers_df["y"],
                 mode="markers", marker=dict(size=12, color="black", symbol="x"),
-                name="Centri Cluster"
+                name="Cluster Centers"
             )
-
+        
         fig.update_layout(
             hovermode="closest",
             legend_title_text='Cluster'
         )
-
+        
         return fig
+    
+    else:  # Matplotlib
+        plt.figure(figsize=(10, 7))
+        scatter = plt.scatter(
+            X[:, 0], X[:, 1], 
+            c=labels, s=df["Avg Basket Size ($)"]/5,
+            cmap="viridis", alpha=0.7
+        )
+        
+        if centers is not None:
+            plt.scatter(
+                centers[:, 0], centers[:, 1],
+                marker="X", s=200, c="red", 
+                edgecolors="black", linewidths=1.5,
+                label="Cluster Centers"
+            )
+        
+        plt.title(f"Customer Segments ({method})")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.colorbar(scatter, label="Cluster")
+        plt.grid(alpha=0.2)
+        plt.tight_layout()
+        return plt.gcf()
 
-    else:  # Matplotlib (solo se necessario, Plotly è più potente e interattivo)
-        # Il tuo codice Matplotlib qui, ma raccomando Plotly per un'app Streamlit
-        st.warning("Per un'esperienza migliore, si consiglia di usare 'Plotly' come motore di plotting.")
-        return None # Restituisci None o una figura di default per Matplotlib
-
-# Crea il grafico
-cluster_plot = crea_grafico_cluster(
-    X_ridotto, etichette,
-    centri if algoritmo == "K-Means" and dim_reduction != "t-SNE" else None,
-    metodo_riduzione,
-    plot_engine,
-    df
+# Create the plot
+cluster_plot = create_cluster_plot(
+    X_reduced, labels, 
+    centers if centers is not None and dim_reduction != "t-SNE" else None,
+    reduction_method,
+    plot_engine
 )
 
-# --- Profilazione dei Cluster ---
-def profila_cluster(df, etichette, caratteristiche):
-    df_clusterizzato = df.copy()
-    df_clusterizzato["Cluster"] = etichette
-
-    # Riepilogo numerico
-    profili_cluster = df_clusterizzato.groupby("Cluster")[caratteristiche].agg(
+# --- Cluster Profiling ---
+def profile_clusters(df, labels, features):
+    df_clustered = df.copy()
+    df_clustered["Cluster"] = labels
+    
+    # Numeric summary
+    cluster_profiles = df_clustered.groupby("Cluster")[features].agg(
         ["mean", "median", "std", "count"]
-    ).round(2) # Arrotonda a 2 decimali
+    )
+    
+    # Categorical summary
+    if "Gender" in df.columns:
+        gender_dist = pd.crosstab(df_clustered["Cluster"], df_clustered["Gender"])
+        gender_dist_pct = gender_dist.div(gender_dist.sum(1), axis=0)
+        cluster_profiles = pd.concat([cluster_profiles, gender_dist_pct], axis=1)
+    
+    if "Loyalty Card Member" in df.columns:
+        loyalty_dist = pd.crosstab(df_clustered["Cluster"], df_clustered["Loyalty Card Member"])
+        loyalty_dist_pct = loyalty_dist.div(loyalty_dist.sum(1), axis=0)
+        cluster_profiles = pd.concat([cluster_profiles, loyalty_dist_pct], axis=1)
+    
+    return cluster_profiles, df_clustered
 
-    # Riepilogo categorico
-    if "Genere" in df.columns:
-        if not df_clusterizzato.empty:
-            dist_genere = pd.crosstab(df_clusterizzato["Cluster"], df_clusterizzato["Genere"])
-            sum_dist_genere = dist_genere.sum(1)
-            dist_genere_pct = dist_genere.div(sum_dist_genere, axis=0).round(2) if not sum_dist_genere.empty else dist_genere
-            profili_cluster = pd.concat([profili_cluster, dist_genere_pct], axis=1)
+cluster_profiles, df_clustered = profile_clusters(df, labels, features)
 
-    if "Membro Carta Fedeltà" in df.columns:
-        if not df_clusterizzato.empty:
-            dist_carta_fedelta = pd.crosstab(df_clusterizzato["Cluster"], df_clusterizzato["Membro Carta Fedeltà"])
-            sum_dist_carta_fedelta = dist_carta_fedelta.sum(1)
-            dist_carta_fedelta_pct = dist_carta_fedelta.div(sum_dist_carta_fedelta, axis=0).round(2) if not sum_dist_carta_fedelta.empty else dist_carta_fedelta
-            profili_cluster = pd.concat([profili_cluster, dist_carta_fedelta_pct], axis=1)
-
-    return profili_cluster, df_clusterizzato
-
-profili_cluster, df_clusterizzato = profila_cluster(df, etichette, caratteristiche)
-
-# --- Comparazione Segmento Vero ---
-def compara_segmenti_veri(df_clusterizzato):
-    if "Segmento Vero" not in df_clusterizzato.columns or df_clusterizzato.empty:
-        return None, None
-
-    df_filtrato = df_clusterizzato[df_clusterizzato["Cluster"] != -1]
-    if df_filtrato.empty:
-        return None, None
-
-    comparazione = pd.crosstab(
-        df_filtrato["Cluster"],
-        df_filtrato["Segmento Vero"],
+# --- True Segment Comparison ---
+def compare_true_segments(df_clustered):
+    if "True Segment" not in df_clustered.columns:
+        return None
+    
+    comparison = pd.crosstab(
+        df_clustered["Cluster"], 
+        df_clustered["True Segment"],
         normalize="index"
-    ).round(2) # Arrotonda a 2 decimali
+    )
+    
+    purity = comparison.max(axis=1).mean()
+    
+    return comparison, purity
 
-    purezza = comparazione.max(axis=1).mean()
+true_segment_comparison, purity_score = compare_true_segments(df_clustered)
 
-    return comparazione, purezza
-
-comparazione_segmento_vero, punteggio_purezza = compara_segmenti_veri(df_clusterizzato)
-
-# --- Display Principale ---
+# --- Main Display ---
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 Visualizzazione",
-    "📈 Analisi Cluster",
-    "📋 Esploratore Dati",
-    "📚 Documentazione"
+    "📊 Visualization", 
+    "📈 Cluster Analysis",
+    "📋 Data Explorer",
+    "📚 Documentation"
 ])
 
 with tab1:
-    st.header("Visualizzazione della Segmentazione Clienti")
-
+    st.header("Customer Segmentation Visualization")
+    
     col1, col2 = st.columns([3, 1])
-
+    
     with col1:
-        if cluster_plot: # Controlla se il grafico è stato creato
+        if plot_engine == "Plotly":
             st.plotly_chart(cluster_plot, use_container_width=True)
         else:
-            st.info("Impossibile creare il grafico 2D. Controlla i parametri di riduzione dimensionalità o il numero di features.")
-
+            st.pyplot(cluster_plot)
+            plt.close()
+    
     with col2:
-        st.subheader("Metriche Algoritmo")
-
-        st.metric("Numero di Cluster Rilevati", metrics["Numero di Cluster Rilevati"])
-        st.metric("Punti di Rumore", metrics["Punti di Rumore"])
-
-        if not np.isnan(metrics['Silhouette Score']):
+        st.subheader("Algorithm Metrics")
+        
+        st.metric("Number of Clusters", metrics["Number of Clusters"])
+        st.metric("Noise Points", metrics["Noise Points"])
+        
+        if metrics['Silhouette Score'] is not None:
             st.metric("Silhouette Score", f"{metrics['Silhouette Score']:.3f}",
-                      help="Valori più alti indicano cluster meglio definiti (-1 a 1)")
-        else:
-            st.metric("Silhouette Score", "N/D", help="Impossibile calcolare il punteggio per meno di 2 cluster o solo punti di rumore.")
-
-        if not np.isnan(metrics['Indice Davies-Bouldin']):
-            st.metric("Indice Davies-Bouldin", f"{metrics['Indice Davies-Bouldin']:.3f}",
-                      help="Valori più bassi indicano un clustering migliore (0 a ∞)")
-        else:
-            st.metric("Indice Davies-Bouldin", "N/D", help="Impossibile calcolare il punteggio per meno di 2 cluster o solo punti di rumore.")
-
-        if not np.isnan(metrics['Indice Calinski-Harabasz']):
-            st.metric("Indice Calinski-Harabasz", f"{metrics['Indice Calinski-Harabasz']:.3f}",
-                      help="Valori più alti indicano un clustering migliore (0 a ∞)")
-        else:
-            st.metric("Indice Calinski-Harabasz", "N/D", help="Impossibile calcolare il punteggio per meno di 2 cluster o solo punti di rumore.")
-
-        if comparazione_segmento_vero is not None and punteggio_purezza is not None:
-            st.metric("Purezza Segmento", f"{punteggio_purezza:.1%}",
-                      help="Quanto bene i cluster corrispondono ai segmenti veri")
-        else:
-            st.metric("Purezza Segmento", "N/D", help="Segmenti veri non disponibili o dati insufficienti per il confronto.")
+                     help="Higher values indicate better defined clusters (-1 to 1)")
+        
+        if metrics['Davies-Bouldin Index'] is not None:
+            st.metric("Davies-Bouldin Index", f"{metrics['Davies-Bouldin Index']:.3f}",
+                     help="Lower values indicate better clustering (0 to ∞)")
+        
+        if metrics['Calinski-Harabasz Index'] is not None:
+            st.metric("Calinski-Harabasz", f"{metrics['Calinski-Harabasz Index']:.3f}",
+                     help="Higher values indicate better clustering (0 to ∞)")
+        
+        if true_segment_comparison is not None:
+            st.metric("Segment Purity", f"{purity_score:.1%}",
+                     help="How well clusters match true segments")
 
 with tab2:
-    st.header("Analisi dei Cluster")
-
-    st.subheader("Caratteristiche dei Cluster")
-    st.dataframe(profili_cluster[profili_cluster.index != -1].style.background_gradient(cmap="Blues"))
-
-    st.subheader("Distribuzioni delle Caratteristiche per Cluster")
-    caratteristica_selezionata = st.selectbox("Seleziona caratteristica da visualizzare", caratteristiche)
-
-    df_per_boxplot = df_clusterizzato[df_clusterizzato["Cluster"] != -1]
-    if not df_per_boxplot.empty:
-        fig = px.box(df_per_boxplot, x="Cluster", y=caratteristica_selezionata, color="Cluster")
+    st.header("Cluster Analysis")
+    
+    st.subheader("Cluster Characteristics")
+    st.dataframe(cluster_profiles.style.background_gradient(cmap="Blues"))
+    
+    st.subheader("Feature Distributions by Cluster")
+    selected_feature = st.selectbox("Select feature to visualize", features)
+    
+    if plot_engine == "Plotly":
+        fig = px.box(df_clustered, x="Cluster", y=selected_feature, color="Cluster")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("Nessun cluster valido per visualizzare le distribuzioni delle caratteristiche.")
-
-    if comparazione_segmento_vero is not None:
-        st.subheader("Comparazione con i Segmenti Veri")
-        st.dataframe(comparazione_segmento_vero.style.background_gradient(cmap="Greens", axis=1))
-
-        fig = px.imshow(comparazione_segmento_vero, text_auto=".1%", color_continuous_scale="Viridis")
+        plt.figure(figsize=(10, 5))
+        df_clustered.boxplot(column=selected_feature, by="Cluster", grid=False)
+        plt.title(f"Distribution of {selected_feature} by Cluster")
+        plt.suptitle("")
+        st.pyplot(plt.gcf())
+        plt.close()
+    
+    if true_segment_comparison is not None:
+        st.subheader("True Segment Comparison")
+        st.dataframe(true_segment_comparison.style.background_gradient(cmap="Greens", axis=1))
+        
+        fig = px.imshow(true_segment_comparison, text_auto=".1%")
         st.plotly_chart(fig, use_container_width=True)
 
 with tab3:
-    st.header("Esploratore Dati")
-
-    st.subheader("Dati Grezzi con Assegnazioni Cluster")
-    st.dataframe(df_clusterizzato.round(2)) # Arrotonda il dataframe a 2 decimali
-
-    # Bottone per il download
-    csv = df_clusterizzato.to_csv(index=False).encode('utf-8')
+    st.header("Data Explorer")
+    
+    st.subheader("Raw Data with Cluster Assignments")
+    st.dataframe(df_clustered)
+    
+    # Download button
+    csv = df_clustered.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="Scarica dati clusterizzati come CSV",
+        label="Download clustered data as CSV",
         data=csv,
-        file_name="clienti_retail_clusterizzati.csv",
+        file_name="retail_customers_clustered.csv",
         mime="text/csv"
     )
-
-    st.subheader("Correlazioni tra Caratteristiche")
-    matrice_correlazione = df_clusterizzato[caratteristiche].corr()
-
-    fig = px.imshow(matrice_correlazione, text_auto=".2f", color_continuous_scale="RdBu",
-                    title="Matrice di Correlazione delle Caratteristiche")
-    st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Feature Correlations")
+    corr_matrix = df_clustered[features].corr()
+    
+    if plot_engine == "Plotly":
+        fig = px.imshow(corr_matrix, text_auto=".2f", color_continuous_scale="RdBu")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        plt.figure(figsize=(10, 8))
+        plt.imshow(corr_matrix, cmap="coolwarm", vmin=-1, vmax=1)
+        plt.colorbar()
+        plt.xticks(range(len(features)), features, rotation=45)
+        plt.yticks(range(len(features)), features)
+        for i in range(len(features)):
+            for j in range(len(features)):
+                plt.text(j, i, f"{corr_matrix.iloc[i, j]:.2f}", 
+                        ha="center", va="center", color="black")
+        st.pyplot(plt.gcf())
+        plt.close()
 
 with tab4:
-    st.header("Documentazione")
-
-    st.subheader("Informazioni su Questo Strumento")
+    st.header("Documentation")
+    
+    st.subheader("About This Tool")
     st.markdown("""
-    Questo strumento interattivo permette agli analisti retail di:
-    - Esplorare la segmentazione dei clienti utilizzando diversi algoritmi
-    - Confrontare le performance degli algoritmi tramite metriche multiple
-    - Profilare i segmenti di clienti basandosi sulle loro caratteristiche
-    - Scoprire pattern nascosti nel comportamento dei clienti
-
-    **Caratteristiche Chiave:**
-    - Due algoritmi di clustering (K-Means, DBSCAN)
-    - Diverse tecniche di riduzione di dimensionalità
-    - Visualizzazioni interattive con Plotly
-    - Profilazione completa dei cluster
-    - Valutazione rispetto alla "verità" (quando disponibile nei dati simulati)
+    This interactive tool allows retail analysts to:
+    - Explore customer segmentation using different algorithms
+    - Compare algorithm performance using multiple metrics
+    - Profile customer segments based on their characteristics
+    - Discover hidden patterns in customer behavior
+    
+    **Key Features:**
+    - Three clustering algorithms (K-Means, DBSCAN, Hierarchical)
+    - Multiple dimensionality reduction techniques
+    - Interactive visualizations with Plotly
+    - Comprehensive cluster profiling
+    - Evaluation against ground truth (when available)
     """)
-
-    st.subheader("Descrizioni delle Caratteristiche")
-    descrizioni_caratteristiche = {
-        "Età": "Età del cliente in anni",
-        "Reddito Annuo ($)": "Reddito annuo stimato del nucleo familiare",
-        "Visite Online Mensili": "Numero di visite al negozio online/app al mese",
-        "Dimensione Cestino Media ($)": "Spesa media per ogni acquisto",
-        "Percentuale Acquisti Bio": "Percentuale di acquisti di prodotti biologici",
-        "Sensibilità allo Sconto": "Probabilità di rispondere agli sconti (scala 0-1)",
-        "Visite Mensili al Negozio": "Numero di visite al negozio fisico al mese",
-        "Punteggio Lealtà Brand": "Preferenza per brand noti vs. marche private (scala 0-1)",
-        "Membro Carta Fedeltà": "Se il cliente possiede una carta fedeltà",
-        "Segmento Vero": "Segmento reale (solo nei dati simulati)"
+    
+    st.subheader("Feature Descriptions")
+    feature_descriptions = {
+        "Age": "Customer age in years",
+        "Annual Income ($)": "Estimated annual household income",
+        "Monthly Online Visits": "Number of visits to online store/app per month",
+        "Avg Basket Size ($)": "Average spending per shopping trip",
+        "Organic Purchase %": "Percentage of purchases that are organic products",
+        "Discount Sensitivity": "Likelihood to respond to discounts (0-1 scale)",
+        "Monthly Store Visits": "Number of physical store visits per month",
+        "Brand Loyalty Score": "Preference for branded vs private label (0-1 scale)",
+        "Loyalty Card Member": "Whether customer has loyalty card",
+        "True Segment": "Ground truth segment (only in simulated data)"
     }
-
-    for feat, desc in descrizioni_caratteristiche.items():
+    
+    for feat, desc in feature_descriptions.items():
         st.markdown(f"**{feat}**: {desc}")
-
-    st.subheader("Guida agli Algoritmi")
+    
+    st.subheader("Algorithm Guidance")
     st.markdown("""
     **K-Means**:
-    - Ideale per cluster sferici di dimensioni simili.
-    - Richiede la specificazione del numero di cluster.
-    - Sensibile agli outlier.
-
+    - Best for spherical clusters of similar size
+    - Requires specifying number of clusters
+    - Sensitive to outliers
+    
     **DBSCAN**:
-    - Trova cluster di forma arbitraria.
-    - Identifica i punti di rumore.
-    - Richiede la taratura di epsilon e min_samples.
+    - Finds clusters of arbitrary shape
+    - Identifies noise points
+    - Requires tuning epsilon and min_samples
+    
+    **Hierarchical**:
+    - Creates nested cluster hierarchy
+    - Can use different linkage methods
+    - Useful for understanding data structure
     """)
 
 # --- Footer ---
 st.markdown("---")
 st.markdown("""
-    *Strumento Avanzato di Analisi Retail* | Creato con Streamlit |
-    [Repository GitHub](https://github.com/tuo-repository)
+    *Advanced Retail Analytics Tool* | Created with Streamlit | 
+    [GitHub Repository](https://github.com/your-repo)
 """)
