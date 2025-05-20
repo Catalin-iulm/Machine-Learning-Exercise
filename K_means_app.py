@@ -5,17 +5,18 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from io import BytesIO
 
 # Configurazione pagina
-st.set_page_config(page_title="Clustering per Retail", layout="wide", page_icon="🛒")
+st.set_page_config(page_title="Clustering Retail", layout="wide", page_icon="🛒")
 
 # Titolo
-st.title("🛒 Analisi Cluster per Clienti Retail")
+st.title("🛒 Segmentazione Clienti Retail")
 st.markdown("""
-Applicazione per segmentare la clientela di un supermercato utilizzando algoritmi di clustering.
+Tool interattivo per segmentare la clientela retail utilizzando algoritmi di clustering.
 """)
 
 # Sidebar
@@ -23,18 +24,33 @@ with st.sidebar:
     st.header("⚙️ Configurazione")
     
     # Selezione algoritmo
-    algoritmo = st.radio("Seleziona algoritmo:", ["K-Means", "DBSCAN"])
+    algoritmo = st.radio("Algoritmo:", ["K-Means", "DBSCAN"])
+    
+    # Selezione features
+    features_disponibili = [
+        "Età", "Reddito Annuale", "Visite Mensili", 
+        "Spesa Media", "% Acquisti Online", 
+        "Frequenza Acquisti", "Valore Carrello"
+    ]
+    features_selezionate = st.multiselect(
+        "Seleziona features per il clustering:",
+        features_disponibili,
+        default=["Età", "Reddito Annuale", "Visite Mensili"],
+        max_selections=5
+    )
     
     if algoritmo == "K-Means":
-        n_clusters = st.slider("Numero di cluster:", 2, 10, 4)
-        max_iter = st.slider("Massime iterazioni:", 10, 100, 20)
+        n_clusters = st.slider("Numero cluster:", 2, 10, 4)
+        max_iter = st.slider("Massime iterazioni:", 1, 10, 5)
+        
+        # Visualizzazione evoluzione cluster
+        if st.checkbox("Mostra evoluzione iterazioni"):
+            n_iter_viz = st.slider("Numero iterazioni da visualizzare:", 1, max_iter, min(3, max_iter))
     else:
         eps = st.slider("Raggio (epsilon):", 0.1, 1.0, 0.5, step=0.05)
         min_samples = st.slider("Minimo campioni:", 2, 20, 5)
     
-    # Opzioni visualizzazione
-    riduzione_dim = st.selectbox("Metodo riduzione dimensionale:", ["PCA", "t-SNE"])
-    st.markdown("---")
+    riduzione_dim = st.selectbox("Riduzione dimensionale:", ["PCA", "t-SNE"])
     
     if st.button("🔍 Esegui Analisi"):
         st.experimental_rerun()
@@ -43,28 +59,68 @@ with st.sidebar:
 @st.cache_data
 def genera_dati():
     np.random.seed(42)
-    n = 1000
+    n = 1500
     
-    # Generiamo 4 cluster naturali
-    cluster1 = np.random.normal(loc=[25, 40000, 15], scale=[3, 5000, 3], size=(n//4, 3))
-    cluster2 = np.random.normal(loc=[40, 70000, 8], scale=[5, 8000, 2], size=(n//4, 3))
-    cluster3 = np.random.normal(loc=[60, 35000, 5], scale=[7, 4000, 1], size=(n//4, 3))
-    cluster4 = np.random.normal(loc=[35, 90000, 20], scale=[4, 10000, 4], size=(n//4, 3))
+    # Generiamo 4 cluster naturali con tutte le features
+    dati = {
+        "Età": np.round(np.concatenate([
+            np.random.normal(loc=25, scale=3, size=n//4),
+            np.random.normal(loc=40, scale=5, size=n//4),
+            np.random.normal(loc=60, scale=7, size=n//4),
+            np.random.normal(loc=35, scale=4, size=n//4)
+        ])),
+        "Reddito Annuale": np.concatenate([
+            np.random.normal(loc=40000, scale=5000, size=n//4),
+            np.random.normal(loc=70000, scale=8000, size=n//4),
+            np.random.normal(loc=35000, scale=4000, size=n//4),
+            np.random.normal(loc=90000, scale=10000, size=n//4)
+        ]),
+        "Visite Mensili": np.concatenate([
+            np.random.poisson(15, size=n//4),
+            np.random.poisson(8, size=n//4),
+            np.random.poisson(5, size=n//4),
+            np.random.poisson(20, size=n//4)
+        ]),
+        "Spesa Media": np.concatenate([
+            np.random.normal(loc=50, scale=10, size=n//4),
+            np.random.normal(loc=120, scale=25, size=n//4),
+            np.random.normal(loc=35, scale=8, size=n//4),
+            np.random.normal(loc=200, scale=40, size=n//4)
+        ]),
+        "% Acquisti Online": np.concatenate([
+            np.random.uniform(0.7, 0.9, size=n//4),
+            np.random.uniform(0.3, 0.5, size=n//4),
+            np.random.uniform(0.1, 0.3, size=n//4),
+            np.random.uniform(0.8, 1.0, size=n//4)
+        ]),
+        "Frequenza Acquisti": np.concatenate([
+            np.random.poisson(8, size=n//4),
+            np.random.poisson(4, size=n//4),
+            np.random.poisson(2, size=n//4),
+            np.random.poisson(12, size=n//4)
+        ]),
+        "Valore Carrello": np.concatenate([
+            np.random.normal(loc=30, scale=5, size=n//4),
+            np.random.normal(loc=80, scale=15, size=n//4),
+            np.random.normal(loc=20, scale=4, size=n//4),
+            np.random.normal(loc=150, scale=30, size=n//4)
+        ]),
+        "Genere": np.random.choice(["M", "F"], size=n),
+        "Cluster Reale": np.repeat([1, 2, 3, 4], n//4)
+    }
     
-    dati = np.vstack([cluster1, cluster2, cluster3, cluster4])
-    df = pd.DataFrame(dati, columns=["Età", "Reddito Annuale", "Visite Mensili"])
-    
-    # Aggiungiamo una colonna categorica
-    df["Genere"] = np.random.choice(["M", "F"], size=n)
-    df["Cluster Reale"] = np.repeat([1, 2, 3, 4], n//4)
-    
-    return df
+    return pd.DataFrame(dati)
 
 df = genera_dati()
 
+# Verifica che siano selezionate almeno 2 features
+if len(features_selezionate) < 2:
+    st.warning("Seleziona almeno 2 features per il clustering!")
+    st.stop()
+
 # Preprocessing
 scaler = StandardScaler()
-X = scaler.fit_transform(df[["Età", "Reddito Annuale", "Visite Mensili"]])
+X = scaler.fit_transform(df[features_selezionate])
 
 # Riduzione dimensionale
 if riduzione_dim == "PCA":
@@ -82,25 +138,58 @@ if algoritmo == "K-Means":
     model = KMeans(n_clusters=n_clusters, max_iter=max_iter, n_init='auto')
     labels = model.fit_predict(X)
     centers = scaler.inverse_transform(model.cluster_centers_)
+    
+    # Visualizzazione evoluzione iterazioni
+    if 'n_iter_viz' in locals():
+        st.subheader("Evoluzione dei Cluster durante le Iterazioni")
+        
+        # Esegui K-Means per ogni iterazione
+        figs = []
+        for i in range(1, n_iter_viz+1):
+            model_temp = KMeans(n_clusters=n_clusters, max_iter=i, n_init=1, init='random')
+            labels_temp = model_temp.fit_predict(X)
+            
+            fig, ax = plt.subplots(figsize=(6, 4))
+            scatter = ax.scatter(X_ridotto[:, 0], X_ridotto[:, 1], c=labels_temp, cmap='viridis', alpha=0.6)
+            ax.set_title(f"Iterazione {i}")
+            ax.set_xlabel("Componente 1")
+            ax.set_ylabel("Componente 2")
+            plt.colorbar(scatter, ax=ax, label='Cluster')
+            figs.append(fig)
+            plt.close()
+        
+        # Mostra i grafici in colonne
+        cols = st.columns(n_iter_viz)
+        for i, (col, fig) in enumerate(zip(cols, figs), 1):
+            with col:
+                st.pyplot(fig)
+                # Aggiungi pulsante per scaricare l'immagine
+                buf = BytesIO()
+                fig.savefig(buf, format="png", dpi=100)
+                st.download_button(
+                    label=f"Scarica iterazione {i}",
+                    data=buf,
+                    file_name=f"kmeans_iterazione_{i}.png",
+                    mime="image/png"
+                )
 else:
     model = DBSCAN(eps=eps, min_samples=min_samples)
     labels = model.fit_predict(X)
     centers = None
 
 # Calcolo metriche
-if len(set(labels)) > 1:
+if len(set(labels)) > 1 and -1 not in set(labels):
     silhouette = silhouette_score(X, labels)
-    davies_bouldin = davies_bouldin_score(X, labels)
 else:
-    silhouette = davies_bouldin = "N/A"
+    silhouette = "N/A"
 
 # Visualizzazione
-tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📈 Analisi", "❓ FAQ"])
+tab1, tab2, tab3 = st.tabs(["📊 Risultati", "📈 Analisi", "❓ Guida"])
 
 with tab1:
     st.header("Risultati Clustering")
     
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2, 1])
     
     with col1:
         # Plot cluster
@@ -108,75 +197,72 @@ with tab1:
             x=X_ridotto[:, 0], y=X_ridotto[:, 1], 
             color=labels.astype(str),
             title=f"Risultati Clustering ({metodo_riduzione})",
-            labels={"x": "Componente 1", "y": "Componente 2", "color": "Cluster"}
+            labels={"x": "Componente 1", "y": "Componente 2", "color": "Cluster"},
+            hover_data=df[features_selezionate]
         )
         st.plotly_chart(fig, use_container_width=True)
-        
-        # Metriche
-        st.subheader("Metriche di Performance")
-        col_met1, col_met2 = st.columns(2)
-        with col_met1:
-            st.metric("Silhouette Score", f"{silhouette:.3f}" if silhouette != "N/A" else "N/A")
-        with col_met2:
-            st.metric("Davies-Bouldin", f"{davies_bouldin:.3f}" if davies_bouldin != "N/A" else "N/A")
     
     with col2:
-        # Profili cluster
-        df["Cluster"] = labels
-        profili = df.groupby("Cluster").mean(numeric_only=True)
-        st.subheader("Profili Cluster")
-        st.dataframe(profili.style.background_gradient(cmap="Blues"))
+        st.subheader("Metriche")
+        st.metric("Silhouette Score", 
+                 f"{silhouette:.3f}" if silhouette != "N/A" else "N/A",
+                 help="Valore tra -1 e 1, più alto è meglio")
         
-        # Boxplot
-        feature = st.selectbox("Seleziona feature:", ["Età", "Reddito Annuale", "Visite Mensili"])
-        fig = px.box(df, x="Cluster", y=feature, color="Cluster")
-        st.plotly_chart(fig, use_container_width=True)
+        st.subheader("Distribuzione Cluster")
+        cluster_counts = pd.Series(labels).value_counts().sort_index()
+        st.bar_chart(cluster_counts)
+        
+        st.write(f"Features utilizzate: {', '.join(features_selezionate)}")
 
 with tab2:
     st.header("Analisi Dettagliata")
     
-    st.subheader("Dati Originali con Cluster")
-    st.dataframe(df)
+    df["Cluster"] = labels
     
-    st.subheader("Correlazioni tra Features")
-    corr = df[["Età", "Reddito Annuale", "Visite Mensili"]].corr()
-    fig = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu")
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.download_button(
-        label="📥 Scarica Dati",
-        data=df.to_csv(index=False).encode('utf-8'),
-        file_name="clienti_clusterizzati.csv",
-        mime="text/csv"
+    st.subheader("Statistiche per Cluster")
+    st.dataframe(
+        df.groupby("Cluster")[features_selezionate]
+        .agg(["mean", "median", "std"])
+        .style.background_gradient(cmap="Blues")
     )
+    
+    st.subheader("Distribuzione Features")
+    feature = st.selectbox("Seleziona feature:", features_selezionate)
+    fig = px.box(df, x="Cluster", y=feature, color="Cluster")
+    st.plotly_chart(fig, use_container_width=True)
 
 with tab3:
-    st.header("Domande Frequenti")
+    st.header("Guida all'Uso")
     
     st.markdown("""
-    **1. Come funziona K-Means?**  
-    K-Means divide i dati in K cluster cercando di minimizzare la varianza interna a ciascun cluster.
-    È ideale per dati con cluster sferici di dimensioni simili.
+    ### Come utilizzare questo strumento:
+    1. **Seleziona le features** che vuoi usare per il clustering (max 5)
+    2. **Scegli l'algoritmo**:
+       - **K-Means**: per cluster sferici di dimensioni simili
+       - **DBSCAN**: per cluster di forma arbitraria e rilevamento outlier
+    3. **Regola i parametri** dell'algoritmo
+    4. Clicca **Esegui Analisi** per vedere i risultati
     
-    **2. Come funziona DBSCAN?**  
-    DBSCAN identifica cluster come aree dense separate da aree meno dense. Non richiede di specificare
-    il numero di cluster ed è robusto agli outlier.
-    
-    **3. Cosa misura il Silhouette Score?**  
-    Misura quanto bene ogni punto si adatta al proprio cluster rispetto agli altri cluster.
-    Valori vicini a 1 indicano una buona separazione tra cluster.
-    
-    **4. Come interpretare Davies-Bouldin?**  
-    Un valore più basso indica una migliore separazione tra cluster. Idealmente dovrebbe essere < 1.
+    ### Interpretazione:
+    - **Silhouette Score**: misura la qualità del clustering (valore ideale > 0.5)
+    - I grafici mostrano la distribuzione dei dati dopo riduzione dimensionale
+    - Le tabelle mostrano le caratteristiche medie di ogni cluster
     """)
     
-    st.subheader("Informazioni sul Progetto")
-    st.markdown("""
-    Questo strumento è stato sviluppato per dimostrare l'uso di algoritmi di clustering
-    nell'analisi della clientela retail. I dati sono simulati ma rappresentano comportamenti
-    realistici di clienti di supermercati.
-    """)
+    st.subheader("Descrizione Features")
+    descrizioni = {
+        "Età": "Età del cliente (arrotondata all'intero più vicino)",
+        "Reddito Annuale": "Reddito annuale stimato in €",
+        "Visite Mensili": "Numero di visite al negozio/mese",
+        "Spesa Media": "Spesa media per visita in €",
+        "% Acquisti Online": "Percentuale di acquisti fatti online",
+        "Frequenza Acquisti": "Numero di acquisti mensili",
+        "Valore Carrello": "Valore medio del carrello in €"
+    }
+    
+    for feat in features_selezionate:
+        st.markdown(f"**{feat}**: {descrizioni.get(feat, '')}")
 
 # Footer
 st.markdown("---")
-st.markdown("Progetto di Analisi Cluster - Università IULM")
+st.markdown("Progetto di Data Science - Università IULM | [GitHub](https://github.com/)")
