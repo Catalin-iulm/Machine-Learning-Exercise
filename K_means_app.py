@@ -8,79 +8,86 @@ from sklearn.metrics import silhouette_score
 import io
 
 # --- Configurazione Pagina ---
-st.set_page_config(layout="wide", page_title="Visualizzatore Algoritmi di Clustering per Marketing")
+st.set_page_config(layout="wide", page_title="Visualizzatore Algoritmi di Clustering per Marketing Supermercato")
 
 # --- Titolo e Introduzione ---
-st.title("🔬 Visualizzatore Interattivo di Algoritmi di Clustering per il Marketing")
+st.title("🔬 Visualizzatore Interattivo di Algoritmi di Clustering per il Marketing al Supermercato")
 st.markdown("""
 Questa applicazione ti permette di esplorare il funzionamento degli algoritmi di clustering **K-Means** e **DBSCAN**
-su un dataset simulato di clienti con caratteristiche realistiche (Età, Reddito, Comportamento Online).
-Modifica i parametri dell'algoritmo per vedere quali segmenti di clienti puoi identificare!
+su un dataset simulato di clienti di un supermercato, con caratteristiche realistiche (Età, Sesso, Reddito, Comportamento Online).
+Modifica i parametri dell'algoritmo per vedere quali segmenti di clienti puoi identificare e come ottimizzare le tue strategie di marketing!
 """)
 
-# --- Funzione per Generare Dati Sintetici per Marketing ---
+# --- Funzione per Generare Dati Sintetici per Marketing (Supermercato) ---
 def generate_customer_data(n_samples, random_state):
     np.random.seed(random_state)
-    
-    # Simulate different customer segments
-    # Segment 1: Younger, lower income, higher online activity (e.g., students/young professionals)
-    age_1 = np.random.normal(25, 5, n_samples // 3)
-    income_1 = np.random.normal(25000, 5000, n_samples // 3)
-    visits_1 = np.random.normal(15, 4, n_samples // 3)
-    time_1 = np.random.normal(30, 10, n_samples // 3)
-    
-    # Segment 2: Middle-aged, middle income, moderate online activity (e.g., established professionals/families)
-    age_2 = np.random.normal(45, 7, n_samples // 3)
-    income_2 = np.random.normal(55000, 10000, n_samples // 3)
-    visits_2 = np.random.normal(8, 3, n_samples // 3)
-    time_2 = np.random.normal(20, 8, n_samples // 3)
 
-    # Segment 3: Older, higher income, lower online activity (e.g., retirees/less tech-savvy)
-    age_3 = np.random.normal(60, 8, n_samples - (n_samples // 3) * 2)
-    income_3 = np.random.normal(70000, 15000, n_samples - (n_samples // 3) * 2)
-    visits_3 = np.random.normal(3, 2, n_samples - (n_samples // 3) * 2)
-    time_3 = np.random.normal(10, 5, n_samples - (n_samples // 3) * 2)
-    
-    # Combine data
-    age = np.concatenate([age_1, age_2, age_3])
-    income = np.concatenate([income_1, income_2, income_3])
-    visits = np.concatenate([visits_1, visits_2, visits_3])
-    time = np.concatenate([time_1, time_2, time_3])
+    ages = np.random.randint(18, 71, n_samples)
+    genders = np.random.choice(['Uomo', 'Donna'], n_samples)
 
-    # Ensure positive values and reasonable limits
-    age = np.clip(age, 18, 80).astype(int)
-    income = np.clip(income, 10000, 150000).astype(int)
+    # Simulate income based on age
+    incomes = np.zeros(n_samples)
+    for i, age in enumerate(ages):
+        if 18 <= age <= 25: # Young adults
+            incomes[i] = np.random.normal(20000, 4000) # Lower income
+        elif 26 <= age <= 40: # Early/Mid career
+            incomes[i] = np.random.normal(40000, 8000) # Medium income
+        elif 41 <= age <= 55: # Established career
+            incomes[i] = np.random.normal(60000, 12000) # Higher income
+        else: # 56-70 (Approaching/in retirement)
+            incomes[i] = np.random.normal(45000, 10000) # Income might stabilize or slightly decrease
+
+    # Simulate website/app visits based on age
+    visits = np.zeros(n_samples)
+    for i, age in enumerate(ages):
+        if 18 <= age <= 35: # Younger, more tech-savvy
+            visits[i] = np.random.normal(12, 5) # High frequency
+        elif 36 <= age <= 55: # Mid-age, moderate tech use
+            visits[i] = np.random.normal(7, 3) # Medium frequency
+        else: # 56-70 (Older, less frequent online)
+            visits[i] = np.random.normal(3, 2) # Low frequency
+
+    # Simulate average time on site/app based on age
+    time_on_site = np.zeros(n_samples)
+    for i, age in enumerate(ages):
+        if 18 <= age <= 35:
+            time_on_site[i] = np.random.normal(25, 8) # Longer time
+        elif 36 <= age <= 55:
+            time_on_site[i] = np.random.normal(15, 6) # Medium time
+        else:
+            time_on_site[i] = np.random.normal(7, 3) # Shorter time
+
+    # Ensure positive values and reasonable limits for all features
+    incomes = np.clip(incomes, 10000, 150000).astype(int)
     visits = np.clip(visits, 1, 30).astype(int)
-    time = np.clip(time, 5, 60).astype(int) # Time in minutes
-
-    # Gender (randomly assigned for context, not for clustering dimensions)
-    gender = np.random.choice(['Uomo', 'Donna'], n_samples)
+    time_on_site = np.clip(time_on_site, 2, 60).astype(int) # Time in minutes
 
     # Create DataFrame for unscaled data
     df_unscaled = pd.DataFrame({
-        'Età': age,
-        'Sesso': gender,
-        'Reddito Medio Annuo (€)': income,
-        'Frequenza Visite al Sito (n/mese)': visits,
-        'Tempo Medio Permanenza sul Sito (min)': time
+        'Età': ages,
+        'Sesso': genders,
+        'Reddito Medio Annuo (€)': incomes,
+        'Frequenza Visite al Sito/App (n/mese)': visits,
+        'Tempo Medio Permanenza sul Sito/App (min)': time_on_site
     })
     
     # Select features for clustering and scale them
-    X_unscaled = df_unscaled[['Età', 'Reddito Medio Annuo (€)', 'Frequenza Visite al Sito (n/mese)', 'Tempo Medio Permanenza sul Sito (min)']].values
+    # Sesso cannot be directly used in numerical clustering without one-hot encoding,
+    # and for 2D visualization it's best to stick to numerical features.
+    X_unscaled_numerical = df_unscaled[['Età', 'Reddito Medio Annuo (€)', 'Frequenza Visite al Sito/App (n/mese)', 'Tempo Medio Permanenza sul Sito/App (min)']].values
     
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_unscaled)
+    X_scaled = scaler.fit_transform(X_unscaled_numerical)
     
-    return X_scaled, df_unscaled
+    return X_scaled, df_unscaled, X_unscaled_numerical # Return numerical unscaled data too
 
 # --- Mapping per Nomi Features Marketing ---
-# Only two features can be plotted on a 2D scatter plot. We'll let the user choose which ones to plot.
-# The full DataFrame will be displayed in the table regardless.
+# These are the actual column names in the df_unscaled numerical part
 feature_names_mapping = {
     "Età": "Età",
     "Reddito Medio Annuo (€)": "Reddito Medio Annuo (€)",
-    "Frequenza Visite al Sito (n/mese)": "Frequenza Visite al Sito (n/mese)",
-    "Tempo Medio Permanenza sul Sito (min)": "Tempo Medio Permanenza sul Sito (min)"
+    "Frequenza Visite al Sito/App (n/mese)": "Frequenza Visite al Sito/App (n/mese)",
+    "Tempo Medio Permanenza sul Sito/App (min)": "Tempo Medio Permanenza sul Sito/App (min)"
 }
 
 # --- Sidebar per Controlli Globali ---
@@ -88,7 +95,7 @@ with st.sidebar:
     st.header("⚙️ Configurazione Esperimento")
 
     st.subheader("1. Generazione Dataset 'Clienti'")
-    n_samples_data = st.slider("Numero di 'Clienti' Simulati", 100, 2000, 1500, step=100)
+    n_samples_data = st.slider("Numero di 'Clienti' Simulati", 500, 3000, 1500, step=100) # Increased max samples
     random_state_ds = st.slider("Seed Generazione Dati (per riproducibilità)", 0, 100, 42)
     st.markdown("---")
 
@@ -110,20 +117,20 @@ with st.sidebar:
 
     st.subheader(f"4. Parametri {algoritmo_scelto}")
     if algoritmo_scelto == "K-Means":
-        k_clusters_param = st.slider("Numero di Segmenti (K) da Trovare", 1, 10, 3,
+        k_clusters_param = st.slider("Numero di Segmenti (K) da Trovare", 1, 10, 4, # Changed default K to 4 for better fit with new data
                                      help="Quanti segmenti di clienti l'algoritmo K-Means cercherà.")
         kmeans_random_state_param = st.slider("Seed K-Means (per inizializzazione)", 0, 100, 1,
                                              help="Controlla l'inizializzazione dei centroidi per la riproducibilità. Cambialo per vedere diverse configurazioni iniziali.")
     elif algoritmo_scelto == "DBSCAN":
-        eps_param = st.slider("Epsilon (eps) - Raggio di Vicinato", 0.05, 2.0, 0.5, step=0.01, # Adjusted range for scaled data
+        eps_param = st.slider("Epsilon (eps) - Raggio di Vicinato", 0.05, 2.0, 0.5, step=0.01,
                              help="Distanza massima per considerare due 'clienti' vicini. Dato che i dati sono scalati, 0.5-1.0 è un buon punto di partenza.")
-        min_samples_param = st.slider("Min Samples - Densità Minima", 1, 50, 10,
+        min_samples_param = st.slider("Min Samples - Densità Minima", 1, 50, 15, # Adjusted min_samples for more structured data
                                      help="Numero minimo di 'clienti' in un vicinato per formare un segmento denso. I punti sotto questa soglia potrebbero essere considerati rumore.")
 
 # --- Generazione Dati ---
-X_data_scaled_full, df_data_unscaled = generate_customer_data(n_samples_data, random_state_ds)
+X_data_scaled_full, df_data_unscaled, X_data_unscaled_numerical = generate_customer_data(n_samples_data, random_state_ds)
 
-# Extract indices for plotting features
+# Extract indices for plotting features from the numerical array
 idx_x = list(feature_names_mapping.keys()).index(plot_feature_x)
 idx_y = list(feature_names_mapping.keys()).index(plot_feature_y)
 
@@ -133,15 +140,18 @@ X_data_scaled_plot = X_data_scaled_full[:, [idx_x, idx_y]]
 
 # --- Contesto Marketing per il Dataset ---
 st.markdown("---")
-st.subheader("💡 Contesto Marketing del Dataset 'Clienti Simulati':")
+st.subheader("💡 Contesto Marketing del Dataset 'Clienti Simulati del Supermercato':")
 st.info("""
-    Questo dataset simula una base clienti con caratteristiche tipiche: **Età**, **Reddito Medio Annuo**, **Frequenza Visite al Sito** e **Tempo Medio di Permanenza sul Sito**.
-    È progettato per rappresentare diversi segmenti di clienti, come ad esempio:
-    * **Giovani digitali:** Età bassa, reddito medio-basso, alta frequenza e tempo sul sito.
-    * **Professionisti affermati:** Età media, reddito più alto, attività online moderata.
-    * **Clienti meno digitali/senior:** Età più alta, reddito variabile, bassa attività online.
+    Questo dataset simula una base clienti di un supermercato, con caratteristiche come **Età**, **Sesso**, **Reddito Medio Annuo**,
+    **Frequenza Visite al Sito/App** e **Tempo Medio di Permanenza sul Sito/App**.
+    I dati sono stati generati per riflettere correlazioni realistiche (es. i più giovani tendono a essere più online),
+    creando implicitamente dei segmenti di clienti, come:
+    * **Giovani Clienti Digitali:** Età più bassa, reddito variabile (spesso inferiore), alta attività online.
+    * **Famiglie/Professionisti:** Età media, reddito medio/alto, attività online bilanciata.
+    * **Clienti Senior/Tradizionali:** Età più avanzata, reddito da pensione, minore propensione all'online.
 
-    L'obiettivo è usare gli algoritmi di clustering per **identificare questi segmenti nascosti** e personalizzare le strategie di marketing (offerte, contenuti, canali di comunicazione).
+    L'obiettivo del clustering è **identificare questi segmenti nascosti** per sviluppare strategie di marketing più efficaci:
+    promozioni mirate, personalizzazione dell'esperienza in-store vs. online, gestione della fedeltà e acquisizione di nuovi clienti.
 """)
 st.markdown("---")
 
@@ -157,16 +167,16 @@ with st.expander("📊 Visualizza il Dataset Completo dei 'Clienti' (Dati Origin
     st.download_button(
         label="Scarica il Dataset Completo (CSV)",
         data=csv_buffer.getvalue(),
-        file_name="clienti_simulati_marketing.csv",
+        file_name="clienti_supermercato_simulati.csv",
         mime="text/csv"
     )
-    st.info("Nota: Gli algoritmi di clustering lavorano su versioni 'scalate' di queste caratteristiche (Età, Reddito, Frequenza, Tempo) per garantire che tutte abbiano la stessa importanza, indipendentemente dalla loro scala originale. La colonna 'Sesso' è inclusa solo per contesto e non viene usata nel clustering bidimensionale.")
+    st.info("Nota: Gli algoritmi di clustering lavorano sulle **caratteristiche numeriche scalate** (Età, Reddito, Frequenza, Tempo) per garantire che tutte abbiano la stessa importanza, indipendentemente dalla loro scala originale. La colonna 'Sesso' è inclusa solo per contesto e non viene usata direttamente nel clustering bidimensionale, ma sarebbe rilevante in un'analisi multidimensionale.")
 
 st.header(f"🚀 Esecuzione e Risultati: {algoritmo_scelto}")
 
 # --- Esecuzione Clustering ---
 labels_pred = []
-cluster_centers_coords = None
+cluster_centers_coords_plot = None
 n_clusters_found_val = 0
 inertia_val = None
 n_noise_points = 0
@@ -175,9 +185,11 @@ silhouette_avg = None
 if algoritmo_scelto == "K-Means":
     kmeans_model = KMeans(n_clusters=k_clusters_param, random_state=kmeans_random_state_param, n_init='auto')
     labels_pred = kmeans_model.fit_predict(X_data_scaled_full) # Use full scaled data for clustering
-    # Centroids are in the full feature space, but we plot only two dimensions
+    
+    # Centroids are in the full feature space, need to project to the 2D plot space
     cluster_centers_coords_full = kmeans_model.cluster_centers_
     cluster_centers_coords_plot = cluster_centers_coords_full[:, [idx_x, idx_y]] # Extract for plotting
+    
     n_clusters_found_val = len(set(labels_pred))
     inertia_val = kmeans_model.inertia_
 elif algoritmo_scelto == "DBSCAN":
@@ -190,7 +202,7 @@ elif algoritmo_scelto == "DBSCAN":
 # Calcola Silhouette Score se ci sono cluster validi (più di 1 cluster e non tutti rumore)
 if len(set(labels_pred)) > 1 and (len(set(labels_pred)) > 1 or (algoritmo_scelto == "DBSCAN" and -1 not in set(labels_pred))):
     try:
-        silhouette_avg = silhouette_score(X_data_scaled_full, labels_pred) # Use full scaled data for silhouette
+        silhouette_avg = silhouette_score(X_data_scaled_full, labels_pred) # Use full scaled data for silhouette calculation
     except ValueError: # Happens if only one cluster is found, or all points are noise
         silhouette_avg = None
 else:
@@ -200,7 +212,7 @@ else:
 col1_plot, col2_metrics = st.columns([2,1])
 
 with col1_plot:
-    st.subheader(f"Grafico dei Segmenti di Clienti: '{plot_feature_x}' vs '{plot_feature_y}'")
+    st.subheader(f"Grafico dei Segmenti di Clienti: '{plot_feature_x}' vs '{plot_feature_y}' (Dati Scalati)")
     fig_cluster, ax_cluster = plt.subplots(figsize=(10, 7))
 
     # Colormap dinamica
@@ -227,7 +239,7 @@ with col1_plot:
         point_size_plot = 40 if label_val_plot == -1 else 60
         plot_legend_label = f'Clienti Rumore/Outlier (-1)' if label_val_plot == -1 else f'Segmento {label_val_plot}'
 
-        ax_cluster.scatter(X_data_scaled_plot[mask_plot, 0], X_data_scaled_plot[mask_plot, 1], # Use specific scaled features for plot
+        ax_cluster.scatter(X_data_scaled_plot[mask_plot, 0], X_data_scaled_plot[mask_plot, 1],
                            facecolor=current_color_plot, marker=marker_style_plot, s=point_size_plot,
                            label=plot_legend_label, alpha=0.8,
                            edgecolor='k' if label_val_plot !=-1 else 'none', linewidth=0.5 if label_val_plot !=-1 else 0)
