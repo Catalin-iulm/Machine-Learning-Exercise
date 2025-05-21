@@ -263,7 +263,7 @@ with st.form("new_client_electronics_form"):
         nc_cat = st.number_input("Numero Categorie Prodotto Acquistate", min_value=1, value=3, step=1)
         nc_anz = st.number_input("Anzianità Cliente (Mesi)", min_value=0, value=12, step=1)
     
-    submit_button = st.form_submit_button(label="🎯 Trova Cluster per Cliente x")
+    submit_button = st.form_submit_button(label="🎯 Assegna Cluster per profilo cliente")
 
 new_customer_data_for_plot = None
 assigned_profile_nc_name = "N/A"
