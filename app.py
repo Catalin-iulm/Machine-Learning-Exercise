@@ -150,7 +150,7 @@ if x_axis_feat == y_axis_feat:
 
 # --- Evoluzione dei Cluster ---
 st.header("🔄 Evoluzione dei Cluster")
-st.markdown(f"Visualizzazione dei cluster e coordinate dei centroidi dopo 1, {chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1}, e {chosen_max_iterations} iterazioni.")
+st.markdown(f"Visualizzazione dei cluster, coordinate dei centroidi e inerzia dopo 1, {chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1}, e {chosen_max_iterations} iterazioni.")
 
 iterations_to_show = sorted(list(set([1] + ([chosen_max_iterations // 2] if chosen_max_iterations > 2 else []) + [chosen_max_iterations])))
 if not iterations_to_show or iterations_to_show[-1] == 0 : iterations_to_show = [1]
@@ -164,10 +164,11 @@ for i, num_iter in enumerate(iterations_to_show):
         st.subheader(f"Iter: {num_iter}")
         # Calcola K-Means per l'iterazione corrente
         kmeans_evol = KMeans(n_clusters=K_CLUSTERS, init='k-means++', n_init=1, max_iter=num_iter, random_state=42)
-        kmeans_evol.fit(X_scaled)
+        kmeans_evol.fit(X_scaled) # Adatta ai dati scalati
         labels_evol = kmeans_evol.labels_
         centroids_evol_scaled = kmeans_evol.cluster_centers_
-        centroids_evol_original = scaler.inverse_transform(centroids_evol_scaled) # Coordinate originali dei centroidi
+        centroids_evol_original = scaler.inverse_transform(centroids_evol_scaled) 
+        inertia_evol = kmeans_evol.inertia_ # Ottieni l'inerzia
 
         # Prepara dati per il grafico
         plot_df_evol = data_original_df.copy()
@@ -192,25 +193,19 @@ for i, num_iter in enumerate(iterations_to_show):
         ax_evol.grid(True, linestyle='--', alpha=0.5)
         st.pyplot(fig_evol)
 
-        # Tabella Coordinate Centroidi per ogni iterazione con STILE APPLICATO
+        # Tabella Coordinate Centroidi
         st.markdown("**Coordinate Centroidi (Valori Originali):**")
         centroids_iter_df = pd.DataFrame(centroids_evol_original, columns=FEATURE_COLS_ELETTRONICA)
-        
-        # Mostra solo le coordinate delle feature selezionate per gli assi del grafico
-        # e applica lo stile highlight
         st.dataframe(
             centroids_iter_df[[x_axis_feat, y_axis_feat]]
             .style.format("{:.1f}")
             .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
-            .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;') # Rosa chiaro
+            .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;')
         )
-        # Se si desidera mostrare tutte le feature dei centroidi:
-        # st.dataframe(
-        #     centroids_iter_df
-        #     .style.format("{:.1f}")
-        #     .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
-        #     .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;')
-        # )
+        
+        # --- NUOVA AGGIUNTA: Visualizzazione Inerzia ---
+        st.markdown(f"**Inerzia (WCSS):** `{inertia_evol:.2f}`")
+        st.caption("L'inerzia misura la somma delle distanze quadratiche dei campioni dal loro centroide più vicino. Valori più bassi indicano cluster più compatti.")
         st.markdown("---") 
 
 st.markdown("---") 
@@ -223,6 +218,9 @@ final_centroids_scaled = kmeans_final.cluster_centers_
 final_centroids_original = scaler.inverse_transform(final_centroids_scaled)
 final_centroids_df = pd.DataFrame(final_centroids_original, columns=FEATURE_COLS_ELETTRONICA)
 
+# Inerzia del modello finale
+final_inertia = kmeans_final.inertia_
+
 data_with_final_labels = data_original_df.copy()
 data_with_final_labels['Cluster_ID'] = final_labels
 
@@ -230,6 +228,8 @@ cluster_names_map = get_electronics_cluster_names(final_centroids_df, K_CLUSTERS
 data_with_final_labels['Profilo_Cliente'] = data_with_final_labels['Cluster_ID'].map(cluster_names_map)
 
 st.write(f"**Profili dei {K_CLUSTERS} Cluster Identificati (basati su {chosen_max_iterations} iterazioni massime):**")
+st.write(f"**Inerzia Finale del Modello:** `{final_inertia:.2f}`")
+
 
 if not data_with_final_labels['Profilo_Cliente'].isnull().all():
     cluster_summary_display = data_with_final_labels.groupby('Profilo_Cliente')[FEATURE_COLS_ELETTRONICA].mean()
@@ -237,7 +237,7 @@ if not data_with_final_labels['Profilo_Cliente'].isnull().all():
         cluster_summary_display
         .style.format("{:.1f}")
         .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
-        .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;') # Rosa chiaro
+        .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;')
     )
 else:
     st.warning("Mappatura dei profili clienti non riuscita. Controllare la logica di `get_electronics_cluster_names`.")
@@ -283,32 +283,27 @@ unique_profiles_final = sorted(list(data_with_final_labels['Profilo_Cliente'].un
 cmap_final_name = 'Accent' 
 try:
     cmap_final = plt.cm.get_cmap(cmap_final_name, len(unique_profiles_final))
-except ValueError: # Fallback se ci sono troppi profili per Accent
+except ValueError: 
     cmap_final = plt.cm.get_cmap('viridis', len(unique_profiles_final))
 
 profile_color_map_final = {profile: cmap_final(i) for i, profile in enumerate(unique_profiles_final)}
 
-# Plot dei dati dei clienti, colorati per profilo
 for profile_name_iter, color_iter in profile_color_map_final.items():
     subset = data_with_final_labels[data_with_final_labels['Profilo_Cliente'] == profile_name_iter]
     if not subset.empty:
         ax_final.scatter(subset[x_axis_feat], subset[y_axis_feat], label=profile_name_iter, 
                          color=color_iter, alpha=0.7, edgecolors='k', s=50, linewidth=0.5)
 
-# Indici delle feature per il plot
 x_feat_idx_final_plot = FEATURE_COLS_ELETTRONICA.index(x_axis_feat)
 y_feat_idx_final_plot = FEATURE_COLS_ELETTRONICA.index(y_axis_feat)
 
-# Etichetta generica per i centroidi nella legenda (per pulizia)
 ax_final.scatter([], [], marker='X', s=250, color='red', edgecolors='black', label='Centroidi') 
 
-# Plot effettivo dei centroidi finali
-for i_centroid in range(K_CLUSTERS): # Itera sui K centroidi finali
+for i_centroid in range(K_CLUSTERS): 
     ax_final.scatter(final_centroids_original[i_centroid, x_feat_idx_final_plot], 
                      final_centroids_original[i_centroid, y_feat_idx_final_plot],
-                     marker='X', s=250, color='red', edgecolors='black', linewidths=1.5) # Centroidi sempre rossi
+                     marker='X', s=250, color='red', edgecolors='black', linewidths=1.5) 
 
-# Evidenzia il nuovo cliente se presente
 if new_customer_data_for_plot is not None:
     nc_plot_x = new_customer_data_for_plot[x_feat_idx_final_plot]
     nc_plot_y = new_customer_data_for_plot[y_feat_idx_final_plot]
@@ -317,13 +312,12 @@ if new_customer_data_for_plot is not None:
                      marker='*', s=350, facecolors='white', edgecolors='blue', linewidths=2, 
                      label=f'📍 Nuovo Cliente ({assigned_profile_nc_name})')
 
-# Impostazioni finali del grafico
 ax_final.set_xlabel(x_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_ylabel(y_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_title("Segmentazione Clienti E-commerce Elettronica (Finale)", fontsize=14)
-ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9) # Legenda esterna
+ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9) 
 ax_final.grid(True, linestyle='--', alpha=0.7)
-plt.tight_layout(rect=[0, 0, 0.85, 1]) # Aggiusta layout per la legenda
+plt.tight_layout(rect=[0, 0, 0.85, 1]) 
 st.pyplot(fig_final)
 
 st.markdown("---")
