@@ -68,30 +68,25 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
     }
     
     available_names = list(profile_definitions.keys())
-    used_names_indices = [] # Tiene traccia degli indici dei centroidi già mappati a un nome specifico
+    used_names_indices = [] 
 
-    # Tenta di mappare i centroidi ai profili definiti
     for i in range(k_clusters):
         centroid_series = centroids_df.iloc[i]
-        best_match_name = f"Gruppo Elettronica {i+1}" # Nome di fallback
+        best_match_name = f"Gruppo Elettronica {i+1}" 
         found_specific_match = False
 
         for name_key, rules in profile_definitions.items():
-            # Verifica se il nome del profilo è già stato usato per un altro centroide dominante
             is_name_already_taken_by_dominant_centroid = False
             for assigned_idx, assigned_name in assigned_names_map.items():
-                if assigned_name == name_key and assigned_idx != i : # Se il nome è già assegnato a un *altro* centroide
+                if assigned_name == name_key and assigned_idx != i : 
                     is_name_already_taken_by_dominant_centroid = True
                     break
             if is_name_already_taken_by_dominant_centroid:
                 continue
 
-
             match = True
             for feature, (op, val) in rules.items():
-                # Assicurati che feature sia una stringa e presente nelle colonne del DataFrame dei centroidi
                 if not isinstance(feature, str) or feature not in centroids_df.columns:
-                    # st.warning(f"Feature '{feature}' non trovata nelle colonne dei centroidi durante il naming.")
                     match = False
                     break
                 
@@ -103,7 +98,6 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
                 if op == '>=' and not (centroid_val >= val): match = False; break
             
             if match:
-                # Verifica se questo centroide è già stato mappato o se il nome è già stato preso da un altro
                 if i not in used_names_indices and name_key not in [assigned_names_map.get(j) for j in used_names_indices if j != i]:
                     best_match_name = name_key
                     used_names_indices.append(i)
@@ -112,7 +106,6 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
         
         assigned_names_map[i] = best_match_name
 
-    # Assicurarsi che tutti i nomi siano unici se possibile, o assegna nomi generici
     final_names = {}
     temp_used_profile_names = []
     for i in range(k_clusters):
@@ -127,13 +120,12 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
             
     return final_names
 
-
 # --- Configurazione App Streamlit ---
 st.set_page_config(layout="wide")
-st.title("🖥️ Segmentazione Clienti E-commerce Elettronica con K-Means")
+st.title("🛍️ Segmentazione Clienti E-commerce Elettronica con K-Means")
 
 # --- Impostazioni Globali e Generazione Dati ---
-K_CLUSTERS = 4 # Numero fisso di cluster
+K_CLUSTERS = 4 
 FEATURE_COLS_ELETTRONICA = ['Spesa_Annua_Media_Euro', 'Frequenza_Acquisti_Trimestrale', 
                             'Numero_Categorie_Prodotto_Acquistate', 'Anzianita_Cliente_Mesi']
 
@@ -150,7 +142,6 @@ chosen_max_iterations = st.sidebar.slider("Numero Massimo di Iterazioni K-Means"
                                           help="Seleziona il numero massimo di iterazioni per l'algoritmo K-Means.")
 
 st.sidebar.header("📊 Visualizzazione Grafici")
-# Le feature per gli assi sono quelle definite per l'elettronica
 x_axis_feat = st.sidebar.selectbox("Feature per Asse X:", FEATURE_COLS_ELETTRONICA, index=0)
 y_axis_feat = st.sidebar.selectbox("Feature per Asse Y:", FEATURE_COLS_ELETTRONICA, index=1)
 
@@ -160,13 +151,12 @@ if x_axis_feat == y_axis_feat:
 
 # --- Evoluzione dei Cluster ---
 st.header("🔄 Evoluzione dei Cluster")
-st.markdown(f"Visualizzazione dei cluster dopo 1, {chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1}, e {chosen_max_iterations} iterazioni.")
+st.markdown(f"Visualizzazione dei cluster e coordinate dei centroidi dopo 1, {chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1}, e {chosen_max_iterations} iterazioni.")
 
 iterations_to_show = sorted(list(set([1] + ([chosen_max_iterations // 2] if chosen_max_iterations > 2 else []) + [chosen_max_iterations])))
 if not iterations_to_show or iterations_to_show[-1] == 0 : iterations_to_show = [1]
 if len(iterations_to_show) > 1 and iterations_to_show[0] == 0 : iterations_to_show = iterations_to_show[1:]
 if not iterations_to_show : iterations_to_show = [1]
-
 
 evolution_cols = st.columns(len(iterations_to_show))
 
@@ -200,7 +190,16 @@ for i, num_iter in enumerate(iterations_to_show):
         ax_evol.grid(True, linestyle='--', alpha=0.5)
         st.pyplot(fig_evol)
 
-st.markdown("---")
+        # --- NUOVA AGGIUNTA: Tabella Coordinate Centroidi per ogni iterazione ---
+        st.markdown("**Coordinate Centroidi (Valori Originali):**")
+        centroids_iter_df = pd.DataFrame(centroids_evol_original, columns=FEATURE_COLS_ELETTRONICA)
+        # Mostra solo le coordinate delle feature selezionate per gli assi del grafico per coerenza visiva
+        st.dataframe(centroids_iter_df[[x_axis_feat, y_axis_feat]].style.format("{:.1f}"))
+        # Se vuoi mostrare tutte le coordinate dei centroidi, usa:
+        # st.dataframe(centroids_iter_df.style.format("{:.1f}"))
+        st.markdown("---") # Separatore per la prossima colonna/iterazione
+
+st.markdown("---") # Separatore principale dopo la sezione evoluzione
 
 # --- Modello Finale & Naming Cluster ---
 st.header("🏆 Risultato Finale della Clusterizzazione")
@@ -220,7 +219,7 @@ st.write(f"**Profili dei {K_CLUSTERS} Cluster Identificati (basati su {chosen_ma
 
 if not data_with_final_labels['Profilo_Cliente'].isnull().all():
     cluster_summary_display = data_with_final_labels.groupby('Profilo_Cliente')[FEATURE_COLS_ELETTRONICA].mean()
-    st.dataframe(cluster_summary_display.style.format("{:.1f}").highlight_max(axis=0, color='lightgreen').highlight_min(axis=0, color='#FFCCCB')) # Pink
+    st.dataframe(cluster_summary_display.style.format("{:.1f}").highlight_max(axis=0, color='lightgreen').highlight_min(axis=0, color='#FFCCCB'))
 else:
     st.warning("Mappatura dei profili clienti non riuscita. Controllare la logica di `get_electronics_cluster_names`.")
 
@@ -262,7 +261,7 @@ st.header("🗺️ Grafico Finale dei Cluster con Nuovo Cliente")
 fig_final, ax_final = plt.subplots(figsize=(10, 7))
 
 unique_profiles_final = sorted(list(data_with_final_labels['Profilo_Cliente'].unique()))
-cmap_final_name = 'Accent' # Come da esempio PDF [cite: 11] (anche se la citazione è per i dati, il cmap è visibile)
+cmap_final_name = 'Accent' 
 try:
     cmap_final = plt.cm.get_cmap(cmap_final_name, len(unique_profiles_final))
 except ValueError:
@@ -279,28 +278,17 @@ for profile_name_iter, color_iter in profile_color_map_final.items():
 x_feat_idx_final_plot = FEATURE_COLS_ELETTRONICA.index(x_axis_feat)
 y_feat_idx_final_plot = FEATURE_COLS_ELETTRONICA.index(y_axis_feat)
 
-# Etichetta generale per i centroidi nella legenda
 ax_final.scatter([], [], marker='X', s=250, color='red', edgecolors='black', label='Centroidi') 
 
-# Plot effettivo dei centroidi senza etichette individuali per non affollare la legenda
-for i in range(K_CLUSTERS):
-    # Trova il nome del profilo per il centroide i per usare il colore corretto (se disponibile)
-    profile_name_for_centroid = cluster_names_map.get(i, None)
-    centroid_color = 'red' # Colore di default se il profilo non è mappato o per coerenza
-    if profile_name_for_centroid and profile_name_for_centroid in profile_color_map_final:
-         # Potremmo colorare i centroidi come i loro cluster, ma 'rosso' è più standard per distinguerli
-         pass # Manteniamo rosso per i centroidi per chiarezza, come nell'esempio PDF. [cite: 11]
-
-    ax_final.scatter(final_centroids_original[i, x_feat_idx_final_plot], 
-                     final_centroids_original[i, y_feat_idx_final_plot],
-                     marker='X', s=250, color=centroid_color, edgecolors='black', linewidths=1.5)
-
+for i_centroid in range(K_CLUSTERS):
+    ax_final.scatter(final_centroids_original[i_centroid, x_feat_idx_final_plot], 
+                     final_centroids_original[i_centroid, y_feat_idx_final_plot],
+                     marker='X', s=250, color='red', edgecolors='black', linewidths=1.5)
 
 if new_customer_data_for_plot is not None:
     nc_plot_x = new_customer_data_for_plot[x_feat_idx_final_plot]
     nc_plot_y = new_customer_data_for_plot[y_feat_idx_final_plot]
     
-    # Stile marcatore nuovo cliente ispirato al PDF [cite: 11]
     ax_final.scatter(nc_plot_x, nc_plot_y,
                      marker='*', s=350, facecolors='white', edgecolors='blue', linewidths=2, 
                      label=f'📍 Nuovo Cliente ({assigned_profile_nc_name})')
@@ -310,7 +298,7 @@ ax_final.set_ylabel(y_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_title("Segmentazione Clienti E-commerce Elettronica (Finale)", fontsize=14)
 ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9)
 ax_final.grid(True, linestyle='--', alpha=0.7)
-plt.tight_layout(rect=[0, 0, 0.85, 1]) # Spazio per legenda esterna
+plt.tight_layout(rect=[0, 0, 0.85, 1]) 
 st.pyplot(fig_final)
 
 st.markdown("---")
