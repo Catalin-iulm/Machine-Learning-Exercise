@@ -27,7 +27,7 @@ def generate_electronics_data(num_samples_per_group=75):
         'Spesa_Annua_Media_Euro': np.random.normal(loc=1200, scale=500, size=n2).clip(500, 3000),
         'Frequenza_Acquisti_Trimestrale': np.random.normal(loc=1.5, scale=0.5, size=n2).clip(0, 3),
         'Numero_Categorie_Prodotto_Acquistate': np.random.normal(loc=2.5, scale=1, size=n2).clip(1, 5),
-        'Anzianita__Mesi': np.random.normal(loc=18, scale=10, size=n2).clip(3, 48)
+        'Anzianita_Cliente_Mesi': np.random.normal(loc=18, scale=10, size=n2).clip(3, 48)
     })
     all_data.append(g2)
 
@@ -37,7 +37,7 @@ def generate_electronics_data(num_samples_per_group=75):
         'Spesa_Annua_Media_Euro': np.random.normal(loc=400, scale=150, size=n3).clip(100, 800),
         'Frequenza_Acquisti_Trimestrale': np.random.normal(loc=3, scale=1, size=n3).clip(1, 6),
         'Numero_Categorie_Prodotto_Acquistate': np.random.normal(loc=4, scale=1.5, size=n3).clip(2, 7),
-        'Anzianita__Mesi': np.random.normal(loc=24, scale=8, size=n3).clip(6, 48)
+        'Anzianita_Cliente_Mesi': np.random.normal(loc=24, scale=8, size=n3).clip(6, 48)
     })
     all_data.append(g3)
     
@@ -47,7 +47,7 @@ def generate_electronics_data(num_samples_per_group=75):
         'Spesa_Annua_Media_Euro': np.random.normal(loc=150, scale=70, size=n4).clip(30, 400),
         'Frequenza_Acquisti_Trimestrale': np.random.normal(loc=0.8, scale=0.4, size=n4).clip(0, 2),
         'Numero_Categorie_Prodotto_Acquistate': np.random.normal(loc=1.5, scale=0.5, size=n4).clip(1, 3),
-        'Anzianita__Mesi': np.random.normal(loc=6, scale=4, size=n4).clip(1, 18)
+        'Anzianita_Cliente_Mesi': np.random.normal(loc=6, scale=4, size=n4).clip(1, 18)
     })
     all_data.append(g4)
 
@@ -61,15 +61,15 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
     assigned_names_map = {}
     
     profile_definitions = {
-        " Top Fedele": {'Spesa_Annua_Media_Euro': ('>=', 1500), 'Anzianita__Mesi': ('>=', 24), 'Frequenza_Acquisti_Trimestrale': ('>=', 3)},
+        "Cliente Top Fedele": {'Spesa_Annua_Media_Euro': ('>=', 1500), 'Anzianita_Cliente_Mesi': ('>=', 24), 'Frequenza_Acquisti_Trimestrale': ('>=', 3)},
         "Acquirente Occasionale di Valore": {'Spesa_Annua_Media_Euro': ('>=', 800), 'Frequenza_Acquisti_Trimestrale': ('<', 2.5)},
-        " Regolare Standard": {'Spesa_Annua_Media_Euro': ('<', 1000), 'Frequenza_Acquisti_Trimestrale': ('>=', 2), 'Anzianita__Mesi': ('>=', 12)},
-        "Nuovo  o Esploratore": {'Anzianita__Mesi': ('<', 12), 'Spesa_Annua_Media_Euro': ('<', 500)}
+        "Cliente Regolare Standard": {'Spesa_Annua_Media_Euro': ('<', 1000), 'Frequenza_Acquisti_Trimestrale': ('>=', 2), 'Anzianita_Cliente_Mesi': ('>=', 12)},
+        "Nuovo Cliente o Esploratore": {'Anzianita_Cliente_Mesi': ('<', 12), 'Spesa_Annua_Media_Euro': ('<', 500)}
     }
     
     used_names_indices = [] 
 
-    for i_centroid in range(k_clusters): # Changed loop variable name for clarity
+    for i_centroid in range(k_clusters): 
         centroid_series = centroids_df.iloc[i_centroid]
         best_match_name = f"Gruppo Elettronica {i_centroid+1}" 
         found_specific_match = False
@@ -107,7 +107,7 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
 
     final_names = {}
     temp_used_profile_names = []
-    for i_centroid in range(k_clusters): # Changed loop variable name for clarity
+    for i_centroid in range(k_clusters): 
         proposed_name = assigned_names_map.get(i_centroid, f"Gruppo Elettronica {i_centroid+1}")
         original_proposed_name = proposed_name
         suffix_counter = 1
@@ -126,7 +126,7 @@ st.title("💻 Segmentazione Clienti E-commerce Elettronica con K-Means")
 # --- Impostazioni Globali e Generazione Dati ---
 K_CLUSTERS = 4 
 FEATURE_COLS_ELETTRONICA = ['Spesa_Annua_Media_Euro', 'Frequenza_Acquisti_Trimestrale', 
-                            'Numero_Categorie_Prodotto_Acquistate', 'Anzianita__Mesi']
+                            'Numero_Categorie_Prodotto_Acquistate', 'Anzianita_Cliente_Mesi']
 
 data_df = generate_electronics_data(num_samples_per_group=75)
 data_original_df = data_df.copy()
@@ -151,16 +151,13 @@ if x_axis_feat == y_axis_feat:
 # --- Evoluzione dei Cluster ---
 st.header("🔄 Evoluzione dei Cluster")
 
-# Determina quali iterazioni mostrare
 iterations_to_show = sorted(list(set([1] + ([chosen_max_iterations // 2] if chosen_max_iterations > 2 else []) + [chosen_max_iterations])))
 if not iterations_to_show or iterations_to_show[-1] == 0 : iterations_to_show = [1]
-if len(iterations_to_show) > 1 and iterations_to_show[0] == 0 : iterations_to_show = iterations_to_show[1:] # Rimuovi 0 se presente e non è l'unico
-if not iterations_to_show : iterations_to_show = [1] # Failsafe
-if len(iterations_to_show) > 1 and iterations_to_show[0] == iterations_to_show[1] and len(iterations_to_show) > 1 : # Rimuovi duplicati iniziali
+if len(iterations_to_show) > 1 and iterations_to_show[0] == 0 : iterations_to_show = iterations_to_show[1:] 
+if not iterations_to_show : iterations_to_show = [1] 
+if len(iterations_to_show) > 1 and iterations_to_show[0] == iterations_to_show[1] and len(iterations_to_show) > 1 : 
     iterations_to_show = sorted(list(set(iterations_to_show)))
 
-
-# Costruisci il testo per le iterazioni mostrate
 if len(iterations_to_show) == 1:
     iterations_text = f"{iterations_to_show[0]} iterazione."
 elif len(iterations_to_show) == 2:
@@ -172,12 +169,11 @@ else:
 st.markdown(f"Visualizzazione dei cluster e inerzia dopo {iterations_text}")
 
 evolution_cols = st.columns(len(iterations_to_show))
-middle_plot_index = len(iterations_to_show) // 2 # Indice per la spiegazione dell'inerzia
+middle_plot_index = len(iterations_to_show) // 2 
 
 for i, num_iter in enumerate(iterations_to_show):
     with evolution_cols[i]:
         st.subheader(f"Iter: {num_iter}")
-        # Calcola K-Means per l'iterazione corrente
         kmeans_evol = KMeans(n_clusters=K_CLUSTERS, init='k-means++', n_init=1, max_iter=num_iter, random_state=42)
         kmeans_evol.fit(X_scaled) 
         labels_evol = kmeans_evol.labels_
@@ -185,11 +181,9 @@ for i, num_iter in enumerate(iterations_to_show):
         centroids_evol_original = scaler.inverse_transform(centroids_evol_scaled) 
         inertia_evol = kmeans_evol.inertia_
 
-        # Prepara dati per il grafico
         plot_df_evol = data_original_df.copy()
         plot_df_evol['Cluster_Temp'] = labels_evol
         
-        # Crea il grafico
         fig_evol, ax_evol = plt.subplots(figsize=(6, 5))
         cmap_evol = plt.cm.get_cmap('viridis', K_CLUSTERS)
         
@@ -208,9 +202,7 @@ for i, num_iter in enumerate(iterations_to_show):
         ax_evol.grid(True, linestyle='--', alpha=0.5)
         st.pyplot(fig_evol)
         
-        # Visualizzazione Inerzia
         st.markdown(f"**Inerzia (WCSS):** `{inertia_evol:.2f}`")
-        # Mostra la spiegazione dell'inerzia solo per il grafico centrale
         if i == middle_plot_index:
             st.caption("L'inerzia misura la somma delle distanze quadratiche dei campioni dal loro centroide più vicino. Valori più bassi indicano cluster più compatti.")
         st.markdown("---") 
@@ -231,14 +223,14 @@ data_with_final_labels = data_original_df.copy()
 data_with_final_labels['Cluster_ID'] = final_labels
 
 cluster_names_map = get_electronics_cluster_names(final_centroids_df, K_CLUSTERS, FEATURE_COLS_ELETTRONICA)
-data_with_final_labels['Profilo_'] = data_with_final_labels['Cluster_ID'].map(cluster_names_map)
+data_with_final_labels['Profilo_Cliente'] = data_with_final_labels['Cluster_ID'].map(cluster_names_map)
 
 st.write(f"**Profili dei {K_CLUSTERS} Cluster Identificati (basati su {chosen_max_iterations} iterazioni massime):**")
 st.write(f"**Inerzia Finale del Modello:** `{final_inertia:.2f}`")
 
 
-if not data_with_final_labels['Profilo_'].isnull().all():
-    cluster_summary_display = data_with_final_labels.groupby('Profilo_')[FEATURE_COLS_ELETTRONICA].mean()
+if not data_with_final_labels['Profilo_Cliente'].isnull().all():
+    cluster_summary_display = data_with_final_labels.groupby('Profilo_Cliente')[FEATURE_COLS_ELETTRONICA].mean()
     st.dataframe(
         cluster_summary_display
         .style.format("{:.1f}")
@@ -250,39 +242,41 @@ else:
 
 st.markdown("---")
 
-# --- Assegnazione Nuovo  ---
-st.header("👤 Assegna Nuovo  a un Cluster")
-with st.form("new_client_electronics_form"):
-    st.write("Inserisci le caratteristiche del nuovo :")
+# --- Simulazione Assegnazione Profilo Cliente --- MODIFICATO QUI ---
+st.header("👤 Simula Assegnazione Profilo Cliente") 
+with st.form("profile_simulation_form"): # Nome del form modificato per chiarezza
+    st.write("Inserisci le caratteristiche di un profilo cliente per simularne l'assegnazione a un cluster:") # Testo modificato
     
     cols_form_1 = st.columns(2)
     with cols_form_1[0]:
-        nc_spesa = st.number_input("Spesa Annua Media (€)", min_value=0.0, value=500.0, step=50.0)
-        nc_freq = st.number_input("Frequenza Acquisti Trimestrale", min_value=0, value=2, step=1)
+        # I campi di input rimangono, l'utente può simulare qualsiasi profilo
+        nc_spesa = st.number_input("Spesa Annua Media (€)", min_value=0.0, value=500.0, step=50.0, key="sim_spesa")
+        nc_freq = st.number_input("Frequenza Acquisti Trimestrale", min_value=0, value=2, step=1, key="sim_freq")
     with cols_form_1[1]:
-        nc_cat = st.number_input("Numero Categorie Prodotto Acquistate", min_value=1, value=3, step=1)
-        nc_anz = st.number_input("Anzianità  (Mesi)", min_value=0, value=12, step=1)
+        nc_cat = st.number_input("Numero Categorie Prodotto Acquistate", min_value=1, value=3, step=1, key="sim_cat")
+        nc_anz = st.number_input("Anzianità Cliente (Mesi)", min_value=0, value=12, step=1, key="sim_anz")
     
-    submit_button = st.form_submit_button(label=" 🎯 Assegna Cluster per profilo ")
+    submit_button = st.form_submit_button(label="🎯 Simula Assegnazione Cluster") # Etichetta pulsante modificata
 
-new_customer_data_for_plot = None
-assigned_profile_nc_name = "N/A"
+simulated_profile_data_for_plot = None # Rinominata variabile per chiarezza
+assigned_profile_sim_name = "N/A" # Rinominata variabile per chiarezza
 
 if submit_button:
-    new_customer_features_unscaled = np.array([[nc_spesa, nc_freq, nc_cat, nc_anz]])
-    new_customer_scaled = scaler.transform(new_customer_features_unscaled)
+    simulated_profile_features_unscaled = np.array([[nc_spesa, nc_freq, nc_cat, nc_anz]])
+    simulated_profile_scaled = scaler.transform(simulated_profile_features_unscaled)
     
-    assigned_cluster_idx_nc = kmeans_final.predict(new_customer_scaled)[0]
-    assigned_profile_nc_name = cluster_names_map.get(assigned_cluster_idx_nc, f"Gruppo Elettronica {assigned_cluster_idx_nc}")
+    assigned_cluster_idx_sim = kmeans_final.predict(simulated_profile_scaled)[0] # Rinominata variabile
+    assigned_profile_sim_name = cluster_names_map.get(assigned_cluster_idx_sim, f"Gruppo Elettronica {assigned_cluster_idx_sim}")
     
-    st.success(f"🎉 Il nuovo  è stato assegnato al Cluster ID: **{assigned_cluster_idx_nc}**")
-    st.info(f"👤 Profilo Utente Corrispondente: **{assigned_profile_nc_name}**")
-    new_customer_data_for_plot = new_customer_features_unscaled[0]
+    # Messaggi di output modificati
+    st.success(f"🎉 Il profilo cliente simulato è stato assegnato al Cluster ID: **{assigned_cluster_idx_sim}**")
+    st.info(f"👤 Profilo Utente Corrispondente: **{assigned_profile_sim_name}**")
+    simulated_profile_data_for_plot = simulated_profile_features_unscaled[0]
 
 st.markdown("---")
 
-# --- Visualizzazione Finale ---
-st.header("🗺️ Grafico Finale dei Cluster con Nuovo Cliente")
+# --- Visualizzazione Finale --- MODIFICATO QUI ---
+st.header("🗺️ Grafico Finale dei Cluster con Profilo Cliente Simulato") # Titolo modificato
 fig_final, ax_final = plt.subplots(figsize=(10, 7))
 
 unique_profiles_final = sorted(list(data_with_final_labels['Profilo_Cliente'].unique()))
@@ -310,17 +304,17 @@ for i_centroid in range(K_CLUSTERS):
                      final_centroids_original[i_centroid, y_feat_idx_final_plot],
                      marker='X', s=250, color='red', edgecolors='black', linewidths=1.5) 
 
-if new_customer_data_for_plot is not None:
-    nc_plot_x = new_customer_data_for_plot[x_feat_idx_final_plot]
-    nc_plot_y = new_customer_data_for_plot[y_feat_idx_final_plot]
+if simulated_profile_data_for_plot is not None: # Variabile rinominata
+    sim_plot_x = simulated_profile_data_for_plot[x_feat_idx_final_plot] # Variabile rinominata
+    sim_plot_y = simulated_profile_data_for_plot[y_feat_idx_final_plot] # Variabile rinominata
     
-    ax_final.scatter(nc_plot_x, nc_plot_y,
+    ax_final.scatter(sim_plot_x, sim_plot_y, # Variabili rinominate
                      marker='*', s=350, facecolors='white', edgecolors='blue', linewidths=2, 
-                     label=f'📍 Nuovo Cliente ({assigned_profile_nc_name})')
+                     label=f'📍 Profilo Simulato ({assigned_profile_sim_name})') # Etichetta modificata
 
 ax_final.set_xlabel(x_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_ylabel(y_axis_feat.replace("_", " "), fontsize=12)
-ax_final.set_title("Segmentazione Clienti E-commerce Elettronica (Finale)", fontsize=14)
+ax_final.set_title("Segmentazione Clienti E-commerce Elettronica (Finale)", fontsize=14) # Titolo grafico finale può rimanere generico
 ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9) 
 ax_final.grid(True, linestyle='--', alpha=0.7)
 plt.tight_layout(rect=[0, 0, 0.85, 1]) 
