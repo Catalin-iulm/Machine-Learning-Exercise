@@ -69,15 +69,15 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
     
     used_names_indices = [] 
 
-    for i in range(k_clusters):
-        centroid_series = centroids_df.iloc[i]
-        best_match_name = f"Gruppo Elettronica {i+1}" 
+    for i_centroid in range(k_clusters): # Changed loop variable name for clarity
+        centroid_series = centroids_df.iloc[i_centroid]
+        best_match_name = f"Gruppo Elettronica {i_centroid+1}" 
         found_specific_match = False
 
         for name_key, rules in profile_definitions.items():
             is_name_already_taken_by_dominant_centroid = False
             for assigned_idx, assigned_name in assigned_names_map.items():
-                if assigned_name == name_key and assigned_idx != i : 
+                if assigned_name == name_key and assigned_idx != i_centroid : 
                     is_name_already_taken_by_dominant_centroid = True
                     break
             if is_name_already_taken_by_dominant_centroid:
@@ -97,24 +97,24 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
                 if op == '>=' and not (centroid_val >= val): match = False; break
             
             if match:
-                if i not in used_names_indices and name_key not in [assigned_names_map.get(j) for j in used_names_indices if j != i]:
+                if i_centroid not in used_names_indices and name_key not in [assigned_names_map.get(j) for j in used_names_indices if j != i_centroid]:
                     best_match_name = name_key
-                    used_names_indices.append(i)
+                    used_names_indices.append(i_centroid)
                     found_specific_match = True
                     break
         
-        assigned_names_map[i] = best_match_name
+        assigned_names_map[i_centroid] = best_match_name
 
     final_names = {}
     temp_used_profile_names = []
-    for i in range(k_clusters):
-        proposed_name = assigned_names_map.get(i, f"Gruppo Elettronica {i+1}")
+    for i_centroid in range(k_clusters): # Changed loop variable name for clarity
+        proposed_name = assigned_names_map.get(i_centroid, f"Gruppo Elettronica {i_centroid+1}")
         original_proposed_name = proposed_name
         suffix_counter = 1
         while proposed_name in temp_used_profile_names:
             proposed_name = f"{original_proposed_name} ({suffix_counter})"
             suffix_counter += 1
-        final_names[i] = proposed_name
+        final_names[i_centroid] = proposed_name
         temp_used_profile_names.append(proposed_name)
             
     return final_names
@@ -137,7 +137,7 @@ X_scaled = scaler.fit_transform(X)
 
 # --- Controlli Sidebar ---
 st.sidebar.header("⚙️ Parametri K-Means")
-chosen_max_iterations = st.sidebar.slider("Numero Massimo di Iterazioni K-Means", 1, 4, 4, # Modificato qui
+chosen_max_iterations = st.sidebar.slider("Numero Massimo di Iterazioni K-Means", 1, 4, 4,
                                           help="Seleziona il numero massimo di iterazioni per l'algoritmo K-Means.")
 
 st.sidebar.header("📊 Visualizzazione Grafici")
@@ -150,42 +150,40 @@ if x_axis_feat == y_axis_feat:
 
 # --- Evoluzione dei Cluster ---
 st.header("🔄 Evoluzione dei Cluster")
-# Aggiorna il testo del markdown se necessario, in base al nuovo range di iterazioni
-mid_iteration_point = chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1
-if chosen_max_iterations == 1:
-    iterations_text = "1 iterazione."
-elif chosen_max_iterations == 2:
-    iterations_text = "1 e 2 iterazioni."
-elif chosen_max_iterations == 3:
-     iterations_text = f"1, {mid_iteration_point}, e 3 iterazioni." # Sarà 1, 1, 3 -> diventa 1, 3
-else: # chosen_max_iterations == 4
-    iterations_text = f"1, {mid_iteration_point}, e {chosen_max_iterations} iterazioni."
 
-
-st.markdown(f"Visualizzazione dei cluster, coordinate dei centroidi e inerzia dopo {iterations_text}")
-
-
+# Determina quali iterazioni mostrare
 iterations_to_show = sorted(list(set([1] + ([chosen_max_iterations // 2] if chosen_max_iterations > 2 else []) + [chosen_max_iterations])))
 if not iterations_to_show or iterations_to_show[-1] == 0 : iterations_to_show = [1]
-if len(iterations_to_show) > 1 and iterations_to_show[0] == 0 : iterations_to_show = iterations_to_show[1:]
-if not iterations_to_show : iterations_to_show = [1]
-# Rimuovi duplicati se mid_iteration_point è 1 e chosen_max_iterations è 1 o 2
-if len(iterations_to_show) > 1 and iterations_to_show[0] == iterations_to_show[1]:
+if len(iterations_to_show) > 1 and iterations_to_show[0] == 0 : iterations_to_show = iterations_to_show[1:] # Rimuovi 0 se presente e non è l'unico
+if not iterations_to_show : iterations_to_show = [1] # Failsafe
+if len(iterations_to_show) > 1 and iterations_to_show[0] == iterations_to_show[1] and len(iterations_to_show) > 1 : # Rimuovi duplicati iniziali
     iterations_to_show = sorted(list(set(iterations_to_show)))
 
 
+# Costruisci il testo per le iterazioni mostrate
+if len(iterations_to_show) == 1:
+    iterations_text = f"{iterations_to_show[0]} iterazione."
+elif len(iterations_to_show) == 2:
+    iterations_text = f"{iterations_to_show[0]} e {iterations_to_show[1]} iterazioni."
+else:
+    iterations_text_parts = [str(it) for it in iterations_to_show[:-1]]
+    iterations_text = ", ".join(iterations_text_parts) + f", e {iterations_to_show[-1]} iterazioni."
+
+st.markdown(f"Visualizzazione dei cluster e inerzia dopo {iterations_text}")
+
 evolution_cols = st.columns(len(iterations_to_show))
+middle_plot_index = len(iterations_to_show) // 2 # Indice per la spiegazione dell'inerzia
 
 for i, num_iter in enumerate(iterations_to_show):
     with evolution_cols[i]:
         st.subheader(f"Iter: {num_iter}")
         # Calcola K-Means per l'iterazione corrente
         kmeans_evol = KMeans(n_clusters=K_CLUSTERS, init='k-means++', n_init=1, max_iter=num_iter, random_state=42)
-        kmeans_evol.fit(X_scaled) # Adatta ai dati scalati
+        kmeans_evol.fit(X_scaled) 
         labels_evol = kmeans_evol.labels_
         centroids_evol_scaled = kmeans_evol.cluster_centers_
         centroids_evol_original = scaler.inverse_transform(centroids_evol_scaled) 
-        inertia_evol = kmeans_evol.inertia_ # Ottieni l'inerzia
+        inertia_evol = kmeans_evol.inertia_
 
         # Prepara dati per il grafico
         plot_df_evol = data_original_df.copy()
@@ -209,20 +207,12 @@ for i, num_iter in enumerate(iterations_to_show):
         ax_evol.tick_params(axis='both', which='major', labelsize=8)
         ax_evol.grid(True, linestyle='--', alpha=0.5)
         st.pyplot(fig_evol)
-
-        # Tabella Coordinate Centroidi
-        st.markdown("**Coordinate Centroidi (Valori Originali):**")
-        centroids_iter_df = pd.DataFrame(centroids_evol_original, columns=FEATURE_COLS_ELETTRONICA)
-        st.dataframe(
-            centroids_iter_df[[x_axis_feat, y_axis_feat]]
-            .style.format("{:.1f}")
-            .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
-            .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;')
-        )
         
-        # --- NUOVA AGGIUNTA: Visualizzazione Inerzia ---
+        # Visualizzazione Inerzia
         st.markdown(f"**Inerzia (WCSS):** `{inertia_evol:.2f}`")
-        st.caption("L'inerzia misura la somma delle distanze quadratiche dei campioni dal loro centroide più vicino. Valori più bassi indicano cluster più compatti.")
+        # Mostra la spiegazione dell'inerzia solo per il grafico centrale
+        if i == middle_plot_index:
+            st.caption("L'inerzia misura la somma delle distanze quadratiche dei campioni dal loro centroide più vicino. Valori più bassi indicano cluster più compatti.")
         st.markdown("---") 
 
 st.markdown("---") 
@@ -235,7 +225,6 @@ final_centroids_scaled = kmeans_final.cluster_centers_
 final_centroids_original = scaler.inverse_transform(final_centroids_scaled)
 final_centroids_df = pd.DataFrame(final_centroids_original, columns=FEATURE_COLS_ELETTRONICA)
 
-# Inerzia del modello finale
 final_inertia = kmeans_final.inertia_
 
 data_with_final_labels = data_original_df.copy()
