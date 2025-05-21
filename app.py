@@ -11,7 +11,7 @@ def generate_electronics_data(num_samples_per_group=75):
     np.random.seed(42) # Per riproducibilità
     all_data = []
     
-    # Gruppo 1: Clienti Top Fedeli (Alta spesa, Media-Alta frequenza, Molte categorie, Alta anzianità)
+    # Gruppo 1: Clienti Top Fedeli
     n1 = num_samples_per_group
     g1 = pd.DataFrame({
         'Spesa_Annua_Media_Euro': np.random.normal(loc=2500, scale=800, size=n1).clip(800, 6000),
@@ -21,7 +21,7 @@ def generate_electronics_data(num_samples_per_group=75):
     })
     all_data.append(g1)
 
-    # Gruppo 2: Acquirenti Occasionali di Valore (Media-Alta spesa, Bassa frequenza, Poche-Medie categorie, Anzianità varia)
+    # Gruppo 2: Acquirenti Occasionali di Valore
     n2 = num_samples_per_group
     g2 = pd.DataFrame({
         'Spesa_Annua_Media_Euro': np.random.normal(loc=1200, scale=500, size=n2).clip(500, 3000),
@@ -31,7 +31,7 @@ def generate_electronics_data(num_samples_per_group=75):
     })
     all_data.append(g2)
 
-    # Gruppo 3: Clienti Regolari Contenuti (Bassa-Media spesa, Media frequenza, Medie categorie, Media anzianità)
+    # Gruppo 3: Clienti Regolari Contenuti
     n3 = num_samples_per_group
     g3 = pd.DataFrame({
         'Spesa_Annua_Media_Euro': np.random.normal(loc=400, scale=150, size=n3).clip(100, 800),
@@ -41,7 +41,7 @@ def generate_electronics_data(num_samples_per_group=75):
     })
     all_data.append(g3)
     
-    # Gruppo 4: Nuovi Esploratori / Acquirenti Infrequenti (Bassa spesa, Bassa frequenza, Poche categorie, Bassa anzianità)
+    # Gruppo 4: Nuovi Esploratori / Acquirenti Infrequenti
     n4 = num_samples_per_group
     g4 = pd.DataFrame({
         'Spesa_Annua_Media_Euro': np.random.normal(loc=150, scale=70, size=n4).clip(30, 400),
@@ -67,7 +67,6 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
         "Nuovo Cliente o Esploratore": {'Anzianita_Cliente_Mesi': ('<', 12), 'Spesa_Annua_Media_Euro': ('<', 500)}
     }
     
-    available_names = list(profile_definitions.keys())
     used_names_indices = [] 
 
     for i in range(k_clusters):
@@ -122,7 +121,7 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
 
 # --- Configurazione App Streamlit ---
 st.set_page_config(layout="wide")
-st.title("🛍️ Segmentazione Clienti E-commerce Elettronica con K-Means")
+st.title("💻 Segmentazione Clienti E-commerce Elettronica con K-Means")
 
 # --- Impostazioni Globali e Generazione Dati ---
 K_CLUSTERS = 4 
@@ -163,15 +162,18 @@ evolution_cols = st.columns(len(iterations_to_show))
 for i, num_iter in enumerate(iterations_to_show):
     with evolution_cols[i]:
         st.subheader(f"Iter: {num_iter}")
+        # Calcola K-Means per l'iterazione corrente
         kmeans_evol = KMeans(n_clusters=K_CLUSTERS, init='k-means++', n_init=1, max_iter=num_iter, random_state=42)
         kmeans_evol.fit(X_scaled)
         labels_evol = kmeans_evol.labels_
         centroids_evol_scaled = kmeans_evol.cluster_centers_
-        centroids_evol_original = scaler.inverse_transform(centroids_evol_scaled)
+        centroids_evol_original = scaler.inverse_transform(centroids_evol_scaled) # Coordinate originali dei centroidi
 
+        # Prepara dati per il grafico
         plot_df_evol = data_original_df.copy()
         plot_df_evol['Cluster_Temp'] = labels_evol
         
+        # Crea il grafico
         fig_evol, ax_evol = plt.subplots(figsize=(6, 5))
         cmap_evol = plt.cm.get_cmap('viridis', K_CLUSTERS)
         
@@ -190,16 +192,28 @@ for i, num_iter in enumerate(iterations_to_show):
         ax_evol.grid(True, linestyle='--', alpha=0.5)
         st.pyplot(fig_evol)
 
-        # --- NUOVA AGGIUNTA: Tabella Coordinate Centroidi per ogni iterazione ---
+        # Tabella Coordinate Centroidi per ogni iterazione con STILE APPLICATO
         st.markdown("**Coordinate Centroidi (Valori Originali):**")
         centroids_iter_df = pd.DataFrame(centroids_evol_original, columns=FEATURE_COLS_ELETTRONICA)
-        # Mostra solo le coordinate delle feature selezionate per gli assi del grafico per coerenza visiva
-        st.dataframe(centroids_iter_df[[x_axis_feat, y_axis_feat]].style.format("{:.1f}"))
-        # Se vuoi mostrare tutte le coordinate dei centroidi, usa:
-        # st.dataframe(centroids_iter_df.style.format("{:.1f}"))
-        st.markdown("---") # Separatore per la prossima colonna/iterazione
+        
+        # Mostra solo le coordinate delle feature selezionate per gli assi del grafico
+        # e applica lo stile highlight
+        st.dataframe(
+            centroids_iter_df[[x_axis_feat, y_axis_feat]]
+            .style.format("{:.1f}")
+            .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
+            .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;') # Rosa chiaro
+        )
+        # Se si desidera mostrare tutte le feature dei centroidi:
+        # st.dataframe(
+        #     centroids_iter_df
+        #     .style.format("{:.1f}")
+        #     .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
+        #     .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;')
+        # )
+        st.markdown("---") 
 
-st.markdown("---") # Separatore principale dopo la sezione evoluzione
+st.markdown("---") 
 
 # --- Modello Finale & Naming Cluster ---
 st.header("🏆 Risultato Finale della Clusterizzazione")
@@ -219,7 +233,12 @@ st.write(f"**Profili dei {K_CLUSTERS} Cluster Identificati (basati su {chosen_ma
 
 if not data_with_final_labels['Profilo_Cliente'].isnull().all():
     cluster_summary_display = data_with_final_labels.groupby('Profilo_Cliente')[FEATURE_COLS_ELETTRONICA].mean()
-    st.dataframe(cluster_summary_display.style.format("{:.1f}").highlight_max(axis=0, color='lightgreen').highlight_min(axis=0, color='#FFCCCB'))
+    st.dataframe(
+        cluster_summary_display
+        .style.format("{:.1f}")
+        .highlight_max(axis=0, color='lightgreen', props='font-weight:bold;')
+        .highlight_min(axis=0, color='#FFCCCB', props='font-weight:bold;') # Rosa chiaro
+    )
 else:
     st.warning("Mappatura dei profili clienti non riuscita. Controllare la logica di `get_electronics_cluster_names`.")
 
@@ -264,27 +283,32 @@ unique_profiles_final = sorted(list(data_with_final_labels['Profilo_Cliente'].un
 cmap_final_name = 'Accent' 
 try:
     cmap_final = plt.cm.get_cmap(cmap_final_name, len(unique_profiles_final))
-except ValueError:
+except ValueError: # Fallback se ci sono troppi profili per Accent
     cmap_final = plt.cm.get_cmap('viridis', len(unique_profiles_final))
 
 profile_color_map_final = {profile: cmap_final(i) for i, profile in enumerate(unique_profiles_final)}
 
+# Plot dei dati dei clienti, colorati per profilo
 for profile_name_iter, color_iter in profile_color_map_final.items():
     subset = data_with_final_labels[data_with_final_labels['Profilo_Cliente'] == profile_name_iter]
     if not subset.empty:
         ax_final.scatter(subset[x_axis_feat], subset[y_axis_feat], label=profile_name_iter, 
                          color=color_iter, alpha=0.7, edgecolors='k', s=50, linewidth=0.5)
 
+# Indici delle feature per il plot
 x_feat_idx_final_plot = FEATURE_COLS_ELETTRONICA.index(x_axis_feat)
 y_feat_idx_final_plot = FEATURE_COLS_ELETTRONICA.index(y_axis_feat)
 
+# Etichetta generica per i centroidi nella legenda (per pulizia)
 ax_final.scatter([], [], marker='X', s=250, color='red', edgecolors='black', label='Centroidi') 
 
-for i_centroid in range(K_CLUSTERS):
+# Plot effettivo dei centroidi finali
+for i_centroid in range(K_CLUSTERS): # Itera sui K centroidi finali
     ax_final.scatter(final_centroids_original[i_centroid, x_feat_idx_final_plot], 
                      final_centroids_original[i_centroid, y_feat_idx_final_plot],
-                     marker='X', s=250, color='red', edgecolors='black', linewidths=1.5)
+                     marker='X', s=250, color='red', edgecolors='black', linewidths=1.5) # Centroidi sempre rossi
 
+# Evidenzia il nuovo cliente se presente
 if new_customer_data_for_plot is not None:
     nc_plot_x = new_customer_data_for_plot[x_feat_idx_final_plot]
     nc_plot_y = new_customer_data_for_plot[y_feat_idx_final_plot]
@@ -293,12 +317,13 @@ if new_customer_data_for_plot is not None:
                      marker='*', s=350, facecolors='white', edgecolors='blue', linewidths=2, 
                      label=f'📍 Nuovo Cliente ({assigned_profile_nc_name})')
 
+# Impostazioni finali del grafico
 ax_final.set_xlabel(x_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_ylabel(y_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_title("Segmentazione Clienti E-commerce Elettronica (Finale)", fontsize=14)
-ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9)
+ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9) # Legenda esterna
 ax_final.grid(True, linestyle='--', alpha=0.7)
-plt.tight_layout(rect=[0, 0, 0.85, 1]) 
+plt.tight_layout(rect=[0, 0, 0.85, 1]) # Aggiusta layout per la legenda
 st.pyplot(fig_final)
 
 st.markdown("---")
