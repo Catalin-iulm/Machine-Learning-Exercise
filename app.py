@@ -6,148 +6,152 @@ from sklearn.preprocessing import StandardScaler
 import streamlit as st
 
 # Configurazione Streamlit
-st.set_page_config(page_title="Segmentazione Clienti - Fashion E-commerce", layout="wide")
-st.title("Segmentazione Clienti - Fashion E-commerce")
+st.set_page_config(page_title="Segmentazione Clienti Moda", layout="wide")
+st.title("Segmentazione Clienti - E-commerce di Moda")
 
-# Generazione dati sintetici
+# Generazione dati più realistici
 np.random.seed(42)
 
-def generate_customer_data():
-    # Cluster 1: Clienti occasionali (bassa spesa, pochi acquisti)
-    cluster1_spesa = np.random.normal(80, 15, 50)
-    cluster1_acquisti = np.random.normal(2, 0.5, 50)
+def generate_realistic_data():
+    # Cluster 1: Clienti occasionali (pochi acquisti, bassa spesa)
+    c1_acquisti = np.random.poisson(1.5, 60)
+    c1_spesa = np.random.normal(50, 15, 60) * c1_acquisti
     
-    # Cluster 2: Clienti fedeli (media spesa, media frequenza)
-    cluster2_spesa = np.random.normal(150, 20, 50)
-    cluster2_acquisti = np.random.normal(5, 1, 50)
+    # Cluster 2: Clienti fedeli (media frequenza, media spesa)
+    c2_acquisti = np.random.poisson(4, 60)
+    c2_spesa = np.random.normal(80, 20, 60) * c2_acquisti
     
-    # Cluster 3: Clienti premium (alta spesa, bassa frequenza)
-    cluster3_spesa = np.random.normal(300, 40, 50)
-    cluster3_acquisti = np.random.normal(3, 0.7, 50)
+    # Cluster 3: Clienti premium (pochi acquisti, alta spesa per acquisto)
+    c3_acquisti = np.random.poisson(2, 40)
+    c3_spesa = np.random.normal(200, 50, 40) * c3_acquisti
     
-    # Cluster 4: Clienti quantity-driven (bassa spesa, alta frequenza)
-    cluster4_spesa = np.random.normal(100, 15, 50)
-    cluster4_acquisti = np.random.normal(8, 1.5, 50)
+    # Cluster 4: Clienti compulsive (molti acquisti, spesa variabile)
+    c4_acquisti = np.random.poisson(8, 40)
+    c4_spesa = np.random.normal(60, 20, 40) * c4_acquisti
     
-    # Combiniamo i dati
-    spesa = np.concatenate([cluster1_spesa, cluster2_spesa, cluster3_spesa, cluster4_spesa])
-    acquisti = np.concatenate([cluster1_acquisti, cluster2_acquisti, cluster3_acquisti, cluster4_acquisti])
-    
-    # Creiamo un DataFrame
+    # Combinazione dati
     data = pd.DataFrame({
-        'spesa_media': spesa,
-        'acquisti_mensili': acquisti
+        'acquisti_mensili': np.concatenate([c1_acquisti, c2_acquisti, c3_acquisti, c4_acquisti]),
+        'spesa_totale': np.concatenate([c1_spesa, c2_spesa, c3_spesa, c4_spesa])
     })
     
-    return data
+    # Aggiungiamo spesa media per articolo
+    data['spesa_media'] = data['spesa_totale'] / data['acquisti_mensili']
+    data.replace([np.inf, -np.inf], 0, inplace=True)  # gestione divisione per zero
+    
+    return data[['acquisti_mensili', 'spesa_media']]
 
-# Carichiamo i dati
-data = generate_customer_data()
-
-# Normalizzazione dei dati
+# Caricamento e preparazione dati
+data = generate_realistic_data()
 scaler = StandardScaler()
 scaled_data = scaler.fit_transform(data)
 
-# Applicazione K-Means
-kmeans = KMeans(n_clusters=4, random_state=42)
+# Modello K-Means ottimizzato
+kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
 kmeans.fit(scaled_data)
 data['cluster'] = kmeans.labels_
 
-# Descrizioni dei cluster
-cluster_descriptions = {
+# Nuova descrizione cluster coerente
+cluster_desc = {
     0: {
-        'nome': "Clienti Occasionali",
-        'descrizione': "Clienti che acquistano raramente e spendono poco. Potrebbero essere nuovi clienti o clienti poco coinvolti.",
+        'nome': "Sporadici",
+        'caratteristiche': "1-2 acquisti/mese, <€50/articolo, spesa totale <€100",
         'strategie': [
-            "Email di benvenuto con sconto per il primo acquisto",
-            "Promozioni mirate per incentivare acquisti ripetuti",
-            "Content marketing per aumentare l'engagement"
+            "Email di benvenuto con sconto 15%",
+            "Content su come abbinare i capi",
+            "Notifiche su saldi stagionali"
         ]
     },
     1: {
-        'nome': "Clienti Fedeli",
-        'descrizione': "Clienti con un buon livello di spesa e frequenza di acquisto. Sono la base solida del business.",
+        'nome': "Fedeli",
+        'caratteristiche': "3-5 acquisti/mese, €50-100/articolo, spesa €200-400",
         'strategie': [
-            "Programma fedeltà con punti e ricompense",
-            "Offerte personalizzate basate sull'acquisto precedente",
-            "Anteprime esclusive di nuove collezioni"
+            "Programma fedeltà con premi",
+            "Anteprime collezioni",
+            "Offerte personalizzate"
         ]
     },
     2: {
-        'nome': "Clienti Premium",
-        'descrizione': "Clienti che spendono molto per ogni acquisto, anche se con minore frequenza. Valorizzano qualità e esclusività.",
+        'nome': "Premium",
+        'caratteristiche': "1-3 acquisti/mese, >€150/articolo, spesa >€300",
         'strategie': [
-            "Accesso VIP a prodotti limitati",
-            "Servizio personalizzato di styling",
-            "Packaging premium e consegna espressa gratuita"
+            "Accesso VIP a lanci esclusivi",
+            "Personal shopper virtuale",
+            "Reso gratuito e packaging premium"
         ]
     },
     3: {
-        'nome': "Clienti Quantity-Driven",
-        'descrizione': "Clienti che acquistano frequentemente ma con spesa media bassa. Sono sensibili alle promozioni.",
+        'nome': "Compulsivi",
+        'caratteristiche': "6+ acquisti/mese, <€50/articolo, spesa totale alta",
         'strategie': [
-            "Bundle promozionali (es. 3 capi a prezzo speciale)",
-            "Programma 'acquista 10, ottieni 1 gratis'",
-            "Notifiche su prodotti in saldo"
+            "Bundle 'compra 3, paga 2'",
+            "Abbonamento con vantaggi",
+            "Notifiche su nuovi arrivi"
         ]
     }
 }
 
-# Interfaccia Streamlit
-st.sidebar.header("Simulazione Nuovo Cliente")
-nuova_spesa = st.sidebar.slider("Spesa media mensile (€)", 50, 400, 150)
-nuovi_acquisti = st.sidebar.slider("Numero di acquisti mensili", 1, 10, 4)
-
-# Previsione per il nuovo cliente
-nuovo_cliente = scaler.transform([[nuova_spesa, nuovi_acquisti]])
-cluster_predetto = kmeans.predict(nuovo_cliente)[0]
-cluster_info = cluster_descriptions[cluster_predetto]
-
-# Visualizzazione risultati
-col1, col2 = st.columns(2)
-
+# Interfaccia Streamlit migliorata
+st.sidebar.header("Simula Nuovo Cliente")
+col1, col2 = st.sidebar.columns(2)
 with col1:
-    st.subheader("Risultato della Segmentazione")
-    st.write(f"**Cluster assegnato:** {cluster_info['nome']}")
-    st.write(f"**Descrizione:** {cluster_info['descrizione']}")
-    st.subheader("Strategie Consigliate:")
-    for strategia in cluster_info['strategie']:
-        st.write(f"- {strategia}")
-
+    acquisti = st.slider("Acquisti mensili", 1, 10, 2)
 with col2:
-    # Visualizzazione grafica
-    fig, ax = plt.subplots(figsize=(10, 6))
+    spesa_media = st.slider("Spesa media per articolo (€)", 20, 300, 80)
+
+# Predizione
+nuovo_cliente = scaler.transform([[acquisti, spesa_media]])
+cluster = kmeans.predict(nuovo_cliente)[0]
+info = cluster_desc[cluster]
+
+# Visualizzazione
+st.header("Risultato Segmentazione")
+cols = st.columns([1, 2])
+with cols[0]:
+    st.metric("Cluster Assegnato", info['nome'])
+    st.write(f"**Caratteristiche:** {info['caratteristiche']}")
     
-    colors = ['red', 'green', 'blue', 'purple']
+    st.subheader("Strategie Consigliate:")
+    for s in info['strategie']:
+        st.write(f"✓ {s}")
+
+with cols[1]:
+    fig, ax = plt.subplots(figsize=(10,6))
+    
+    # Visualizzazione cluster
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A']
     for i in range(4):
         cluster_data = data[data['cluster'] == i]
-        ax.scatter(cluster_data['spesa_media'], cluster_data['acquisti_mensili'], 
-                   color=colors[i], label=cluster_descriptions[i]['nome'], alpha=0.6)
+        ax.scatter(cluster_data['acquisti_mensili'], 
+                   cluster_data['spesa_media'], 
+                   c=colors[i], 
+                   label=cluster_desc[i]['nome'],
+                   alpha=0.7)
     
-    # Plot dei centroidi
+    # Centroide e nuovo cliente
     centroids = scaler.inverse_transform(kmeans.cluster_centers_)
-    ax.scatter(centroids[:, 0], centroids[:, 1], marker='X', s=200, color='black', label='Centroidi')
+    ax.scatter(centroids[:,0], centroids[:,1], marker='X', s=200, c='black', label='Centroidi')
+    ax.scatter(acquisti, spesa_media, marker='*', s=300, c='#FFD700', edgecolors='black', label='Nuovo Cliente')
     
-    # Plot del nuovo cliente
-    ax.scatter(nuova_spesa, nuovi_acquisti, marker='*', s=300, color='gold', label='Nuovo Cliente')
-    
-    ax.set_xlabel('Spesa Media Mensile (€)')
-    ax.set_ylabel('Numero di Acquisti Mensili')
-    ax.set_title('Segmentazione Clienti - Fashion E-commerce')
-    ax.legend()
-    ax.grid(True)
-    
+    ax.set_xlabel('Acquisti Mensili')
+    ax.set_ylabel('Spesa Media per Articolo (€)')
+    ax.set_title('Segmentazione Clienti Moda')
+    ax.legend(bbox_to_anchor=(1.05, 1))
+    plt.tight_layout()
     st.pyplot(fig)
 
-# Informazioni aggiuntive
-st.expander("Informazioni sul Modello").write("""
-**Tecnologie utilizzate:**
-- Algoritmo K-Means per la clusterizzazione
-- StandardScaler per la normalizzazione dei dati
-- Streamlit per l'interfaccia web interattiva
-
-**Parametri del modello:**
-- Numero di cluster: 4
-- Dati sintetici generati per simulare comportamenti realistici
-- Modello addestrato su 200 osservazioni
-""")
+# Spiegazione scientifica
+with st.expander("🔍 Come funziona il modello"):
+    st.write("""
+    **Logica di clustering:**
+    - Utilizziamo l'algoritmo K-Means con k=4
+    - Le variabili considerate sono:
+      1. Numero di acquisti mensili
+      2. Spesa media per articolo acquistato
+    - I dati vengono standardizzati prima del clustering
+    
+    **Interpretazione:**
+    - L'asse X mostra la frequenza di acquisto
+    - L'asse Y mostra la qualità/prezzo medio degli acquisti
+    - I cluster emergono naturalmente da queste due dimensioni
+    """)
