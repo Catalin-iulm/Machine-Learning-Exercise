@@ -27,7 +27,7 @@ def generate_electronics_data(num_samples_per_group=75):
         'Spesa_Annua_Media_Euro': np.random.normal(loc=1200, scale=500, size=n2).clip(500, 3000),
         'Frequenza_Acquisti_Trimestrale': np.random.normal(loc=1.5, scale=0.5, size=n2).clip(0, 3),
         'Numero_Categorie_Prodotto_Acquistate': np.random.normal(loc=2.5, scale=1, size=n2).clip(1, 5),
-        'Anzianita_Cliente_Mesi': np.random.normal(loc=18, scale=10, size=n2).clip(3, 48)
+        'Anzianita__Mesi': np.random.normal(loc=18, scale=10, size=n2).clip(3, 48)
     })
     all_data.append(g2)
 
@@ -37,7 +37,7 @@ def generate_electronics_data(num_samples_per_group=75):
         'Spesa_Annua_Media_Euro': np.random.normal(loc=400, scale=150, size=n3).clip(100, 800),
         'Frequenza_Acquisti_Trimestrale': np.random.normal(loc=3, scale=1, size=n3).clip(1, 6),
         'Numero_Categorie_Prodotto_Acquistate': np.random.normal(loc=4, scale=1.5, size=n3).clip(2, 7),
-        'Anzianita_Cliente_Mesi': np.random.normal(loc=24, scale=8, size=n3).clip(6, 48)
+        'Anzianita__Mesi': np.random.normal(loc=24, scale=8, size=n3).clip(6, 48)
     })
     all_data.append(g3)
     
@@ -47,7 +47,7 @@ def generate_electronics_data(num_samples_per_group=75):
         'Spesa_Annua_Media_Euro': np.random.normal(loc=150, scale=70, size=n4).clip(30, 400),
         'Frequenza_Acquisti_Trimestrale': np.random.normal(loc=0.8, scale=0.4, size=n4).clip(0, 2),
         'Numero_Categorie_Prodotto_Acquistate': np.random.normal(loc=1.5, scale=0.5, size=n4).clip(1, 3),
-        'Anzianita_Cliente_Mesi': np.random.normal(loc=6, scale=4, size=n4).clip(1, 18)
+        'Anzianita__Mesi': np.random.normal(loc=6, scale=4, size=n4).clip(1, 18)
     })
     all_data.append(g4)
 
@@ -61,10 +61,10 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
     assigned_names_map = {}
     
     profile_definitions = {
-        "Cliente Top Fedele": {'Spesa_Annua_Media_Euro': ('>=', 1500), 'Anzianita_Cliente_Mesi': ('>=', 24), 'Frequenza_Acquisti_Trimestrale': ('>=', 3)},
+        " Top Fedele": {'Spesa_Annua_Media_Euro': ('>=', 1500), 'Anzianita__Mesi': ('>=', 24), 'Frequenza_Acquisti_Trimestrale': ('>=', 3)},
         "Acquirente Occasionale di Valore": {'Spesa_Annua_Media_Euro': ('>=', 800), 'Frequenza_Acquisti_Trimestrale': ('<', 2.5)},
-        "Cliente Regolare Standard": {'Spesa_Annua_Media_Euro': ('<', 1000), 'Frequenza_Acquisti_Trimestrale': ('>=', 2), 'Anzianita_Cliente_Mesi': ('>=', 12)},
-        "Nuovo Cliente o Esploratore": {'Anzianita_Cliente_Mesi': ('<', 12), 'Spesa_Annua_Media_Euro': ('<', 500)}
+        " Regolare Standard": {'Spesa_Annua_Media_Euro': ('<', 1000), 'Frequenza_Acquisti_Trimestrale': ('>=', 2), 'Anzianita__Mesi': ('>=', 12)},
+        "Nuovo  o Esploratore": {'Anzianita__Mesi': ('<', 12), 'Spesa_Annua_Media_Euro': ('<', 500)}
     }
     
     used_names_indices = [] 
@@ -126,7 +126,7 @@ st.title("💻 Segmentazione Clienti E-commerce Elettronica con K-Means")
 # --- Impostazioni Globali e Generazione Dati ---
 K_CLUSTERS = 4 
 FEATURE_COLS_ELETTRONICA = ['Spesa_Annua_Media_Euro', 'Frequenza_Acquisti_Trimestrale', 
-                            'Numero_Categorie_Prodotto_Acquistate', 'Anzianita_Cliente_Mesi']
+                            'Numero_Categorie_Prodotto_Acquistate', 'Anzianita__Mesi']
 
 data_df = generate_electronics_data(num_samples_per_group=75)
 data_original_df = data_df.copy()
@@ -231,14 +231,14 @@ data_with_final_labels = data_original_df.copy()
 data_with_final_labels['Cluster_ID'] = final_labels
 
 cluster_names_map = get_electronics_cluster_names(final_centroids_df, K_CLUSTERS, FEATURE_COLS_ELETTRONICA)
-data_with_final_labels['Profilo_Cliente'] = data_with_final_labels['Cluster_ID'].map(cluster_names_map)
+data_with_final_labels['Profilo_'] = data_with_final_labels['Cluster_ID'].map(cluster_names_map)
 
 st.write(f"**Profili dei {K_CLUSTERS} Cluster Identificati (basati su {chosen_max_iterations} iterazioni massime):**")
 st.write(f"**Inerzia Finale del Modello:** `{final_inertia:.2f}`")
 
 
-if not data_with_final_labels['Profilo_Cliente'].isnull().all():
-    cluster_summary_display = data_with_final_labels.groupby('Profilo_Cliente')[FEATURE_COLS_ELETTRONICA].mean()
+if not data_with_final_labels['Profilo_'].isnull().all():
+    cluster_summary_display = data_with_final_labels.groupby('Profilo_')[FEATURE_COLS_ELETTRONICA].mean()
     st.dataframe(
         cluster_summary_display
         .style.format("{:.1f}")
@@ -250,10 +250,10 @@ else:
 
 st.markdown("---")
 
-# --- Assegnazione Nuovo Cliente ---
-st.header("👤 Assegna Nuovo Cliente a un Cluster")
+# --- Assegnazione Nuovo  ---
+st.header("👤 Assegna Nuovo  a un Cluster")
 with st.form("new_client_electronics_form"):
-    st.write("Inserisci le caratteristiche del nuovo cliente:")
+    st.write("Inserisci le caratteristiche del nuovo :")
     
     cols_form_1 = st.columns(2)
     with cols_form_1[0]:
@@ -261,9 +261,9 @@ with st.form("new_client_electronics_form"):
         nc_freq = st.number_input("Frequenza Acquisti Trimestrale", min_value=0, value=2, step=1)
     with cols_form_1[1]:
         nc_cat = st.number_input("Numero Categorie Prodotto Acquistate", min_value=1, value=3, step=1)
-        nc_anz = st.number_input("Anzianità Cliente (Mesi)", min_value=0, value=12, step=1)
+        nc_anz = st.number_input("Anzianità  (Mesi)", min_value=0, value=12, step=1)
     
-    submit_button = st.form_submit_button(label="🎯 Assegna Cluster per profilo cliente")
+    submit_button = st.form_submit_button(label=" 🎯 Assegna Cluster per profilo ")
 
 new_customer_data_for_plot = None
 assigned_profile_nc_name = "N/A"
@@ -275,7 +275,7 @@ if submit_button:
     assigned_cluster_idx_nc = kmeans_final.predict(new_customer_scaled)[0]
     assigned_profile_nc_name = cluster_names_map.get(assigned_cluster_idx_nc, f"Gruppo Elettronica {assigned_cluster_idx_nc}")
     
-    st.success(f"🎉 Il nuovo cliente è stato assegnato al Cluster ID: **{assigned_cluster_idx_nc}**")
+    st.success(f"🎉 Il nuovo  è stato assegnato al Cluster ID: **{assigned_cluster_idx_nc}**")
     st.info(f"👤 Profilo Utente Corrispondente: **{assigned_profile_nc_name}**")
     new_customer_data_for_plot = new_customer_features_unscaled[0]
 
