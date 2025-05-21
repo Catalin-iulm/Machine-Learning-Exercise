@@ -137,7 +137,7 @@ X_scaled = scaler.fit_transform(X)
 
 # --- Controlli Sidebar ---
 st.sidebar.header("⚙️ Parametri K-Means")
-chosen_max_iterations = st.sidebar.slider("Numero Massimo di Iterazioni K-Means", 1, 20, 10,
+chosen_max_iterations = st.sidebar.slider("Numero Massimo di Iterazioni K-Means", 1, 4, 4, # Modificato qui
                                           help="Seleziona il numero massimo di iterazioni per l'algoritmo K-Means.")
 
 st.sidebar.header("📊 Visualizzazione Grafici")
@@ -150,12 +150,29 @@ if x_axis_feat == y_axis_feat:
 
 # --- Evoluzione dei Cluster ---
 st.header("🔄 Evoluzione dei Cluster")
-st.markdown(f"Visualizzazione dei cluster, coordinate dei centroidi e inerzia dopo 1, {chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1}, e {chosen_max_iterations} iterazioni.")
+# Aggiorna il testo del markdown se necessario, in base al nuovo range di iterazioni
+mid_iteration_point = chosen_max_iterations // 2 if chosen_max_iterations > 1 else 1
+if chosen_max_iterations == 1:
+    iterations_text = "1 iterazione."
+elif chosen_max_iterations == 2:
+    iterations_text = "1 e 2 iterazioni."
+elif chosen_max_iterations == 3:
+     iterations_text = f"1, {mid_iteration_point}, e 3 iterazioni." # Sarà 1, 1, 3 -> diventa 1, 3
+else: # chosen_max_iterations == 4
+    iterations_text = f"1, {mid_iteration_point}, e {chosen_max_iterations} iterazioni."
+
+
+st.markdown(f"Visualizzazione dei cluster, coordinate dei centroidi e inerzia dopo {iterations_text}")
+
 
 iterations_to_show = sorted(list(set([1] + ([chosen_max_iterations // 2] if chosen_max_iterations > 2 else []) + [chosen_max_iterations])))
 if not iterations_to_show or iterations_to_show[-1] == 0 : iterations_to_show = [1]
 if len(iterations_to_show) > 1 and iterations_to_show[0] == 0 : iterations_to_show = iterations_to_show[1:]
 if not iterations_to_show : iterations_to_show = [1]
+# Rimuovi duplicati se mid_iteration_point è 1 e chosen_max_iterations è 1 o 2
+if len(iterations_to_show) > 1 and iterations_to_show[0] == iterations_to_show[1]:
+    iterations_to_show = sorted(list(set(iterations_to_show)))
+
 
 evolution_cols = st.columns(len(iterations_to_show))
 
