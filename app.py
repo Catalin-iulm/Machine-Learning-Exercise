@@ -1,168 +1,70 @@
+import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-import streamlit as st
 
-# Configurazione Streamlit
-st.set_page_config(page_title="Segmentazione Clienti Moda", layout="wide")
-st.title("Segmentazione Clienti - E-commerce di Moda")
+# Funzione per generare i dati sintetici
+def genera_dati():
+    np.random.seed(42)
+    x1 = np.random.normal(loc=160, scale=10, size=50)
+    y1 = np.random.normal(loc=4, scale=1, size=50)
 
-# Generazione dati robusta
-np.random.seed(42)
+    x2 = np.random.normal(loc=100, scale=15, size=50)
+    y2 = np.random.normal(loc=10, scale=2, size=50)
 
-def generate_robust_data():
-    # Cluster 1: Clienti occasionali (1-2 acquisti, basso valore)
-    c1_acquisti = np.random.randint(1, 3, 60)
-    c1_spesa = np.random.uniform(30, 70, 60) * c1_acquisti
-    
-    # Cluster 2: Clienti fedeli (3-5 acquisti, medio valore)
-    c2_acquisti = np.random.randint(3, 6, 60)
-    c2_spesa = np.random.uniform(50, 120, 60) * c2_acquisti
-    
-    # Cluster 3: Clienti premium (1-3 acquisti, alto valore)
-    c3_acquisti = np.random.randint(1, 4, 40)
-    c3_spesa = np.random.uniform(150, 300, 40) * c3_acquisti
-    
-    # Cluster 4: Clienti compulsive (6+ acquisti, basso valore)
-    c4_acquisti = np.random.randint(6, 10, 40)
-    c4_spesa = np.random.uniform(30, 70, 40) * c4_acquisti
-    
-    # Creazione DataFrame
-    data = pd.DataFrame({
-        'acquisti_mensili': np.concatenate([c1_acquisti, c2_acquisti, c3_acquisti, c4_acquisti]),
-        'spesa_totale': np.concatenate([c1_spesa, c2_spesa, c3_spesa, c4_spesa])
-    })
-    
-    # Calcolo spesa media con gestione degli zeri
-    data['spesa_media'] = np.where(data['acquisti_mensili'] > 0, 
-                                 data['spesa_totale'] / data['acquisti_mensili'], 
-                                 0)
-    
-    # Filtriamo i casi con acquisti mensili = 0 (se presenti)
-    data = data[data['acquisti_mensili'] > 0]
-    
-    return data[['acquisti_mensili', 'spesa_media']]
+    x3 = np.random.normal(loc=130, scale=10, size=50)
+    y3 = np.random.normal(loc=5, scale=1, size=50)
 
-# Caricamento e preparazione dati
-data = generate_robust_data()
+    x4 = np.random.normal(loc=115, scale=12, size=50)
+    y4 = np.random.normal(loc=13, scale=2, size=50)
+
+    X = np.concatenate([x1, x2, x3, x4])
+    Y = np.concatenate([y1, y2, y3, y4])
+    data = pd.DataFrame({'SpesaMediaMensile': X, 'NumeroAcquisti': Y})
+    return data
+
+# App Streamlit
+st.title("🎯 Segmentazione Clienti con K-Means")
+st.write("Inserisci i dati del nuovo cliente per vedere a quale cluster appartiene.")
+
+# Input utente
+spesa = st.slider("Spesa media mensile (€)", min_value=50, max_value=200, value=120)
+acquisti = st.slider("Numero di acquisti mensili", min_value=1, max_value=20, value=10)
+nuovo_cliente = np.array([[spesa, acquisti]])
+
+# Generazione e clustering dei dati
+data = genera_dati()
 scaler = StandardScaler()
-scaled_data = scaler.fit_transform(data)
+data_scaled = scaler.fit_transform(data)
 
-# Modello K-Means con gestione errori
-try:
-    kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
-    kmeans.fit(scaled_data)
-    data['cluster'] = kmeans.labels_
-except Exception as e:
-    st.error(f"Errore nel clustering: {str(e)}")
-    st.stop()
+kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+data['Cluster'] = kmeans.fit_predict(data_scaled)
+centroids = scaler.inverse_transform(kmeans.cluster_centers_)
 
-# Descrizione cluster ottimizzata
-cluster_desc = {
-    0: {
-        'nome': "Sporadici",
-        'caratteristiche': "1-2 acquisti/mese, €30-70/articolo",
-        'strategie': [
-            "Sconto benvenuto 15%",
-            "Guide di stile gratuite",
-            "Notifiche saldi stagionali"
-        ]
-    },
-    1: {
-        'nome': "Fedeli",
-        'caratteristiche': "3-5 acquisti/mese, €50-120/articolo",
-        'strategie': [
-            "Programma fedeltà premium",
-            "Accesso anticipato alle nuove collezioni",
-            "Omaggi esclusivi"
-        ]
-    },
-    2: {
-        'nome': "Premium",
-        'caratteristiche': "1-3 acquisti/mese, €150-300/articolo",
-        'strategie': [
-            "Servizio personal shopper",
-            "Inviti a eventi esclusivi",
-            "Reso gratuito illimitato"
-        ]
-    },
-    3: {
-        'nome': "Compulsivi",
-        'caratteristiche': "6+ acquisti/mese, €30-70/articolo",
-        'strategie': [
-            "Pacchetti scontati 'compra più, risparmia'",
-            "Abbonamento con vantaggi",
-            "Alert nuovi arrivi"
-        ]
-    }
-}
+# Assegnazione nuovo cliente
+nuovo_cliente_scaled = scaler.transform(nuovo_cliente)
+cluster_nuovo_cliente = kmeans.predict(nuovo_cliente_scaled)[0]
 
-# Interfaccia Streamlit
-st.sidebar.header("Simula Nuovo Cliente")
-acquisti = st.sidebar.slider("Acquisti mensili", 1, 10, 2)
-spesa_media = st.sidebar.slider("Spesa media per articolo (€)", 20, 300, 80)
+# Visualizzazione
+fig, ax = plt.subplots(figsize=(8, 6))
+colors = ['red', 'green', 'blue', 'purple']
+for i in range(4):
+    ax.scatter(data[data.Cluster == i]['SpesaMediaMensile'],
+               data[data.Cluster == i]['NumeroAcquisti'],
+               label=f'Cluster {i+1}', alpha=0.6, s=60, c=colors[i])
 
-# Predizione con gestione errori
-try:
-    nuovo_cliente = scaler.transform([[acquisti, spesa_media]])
-    cluster = kmeans.predict(nuovo_cliente)[0]
-    info = cluster_desc[cluster]
-except Exception as e:
-    st.error(f"Errore nella predizione: {str(e)}")
-    st.stop()
+# Centroidi
+ax.scatter(centroids[:, 0], centroids[:, 1], marker='X', s=200, c='black', label='Centroidi')
 
-# Visualizzazione risultati
-col1, col2 = st.columns([1, 2])
+# Nuovo cliente
+ax.scatter(nuovo_cliente[0, 0], nuovo_cliente[0, 1], c='orange', s=150, edgecolors='k', label='Nuovo Cliente')
+ax.set_xlabel('Spesa Media Mensile (€)')
+ax.set_ylabel('Numero Acquisti Mensili')
+ax.set_title('Visualizzazione Clustering')
+ax.legend()
+st.pyplot(fig)
 
-with col1:
-    st.subheader("Risultato Segmentazione")
-    st.metric("Cluster", info['nome'])
-    st.write(f"**Profilo:** {info['caratteristiche']}")
-    
-    st.subheader("Strategie Consigliate")
-    for i, strategia in enumerate(info['strategie'], 1):
-        st.write(f"{i}. {strategia}")
-
-with col2:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A']
-    for i in range(4):
-        cluster_data = data[data['cluster'] == i]
-        ax.scatter(cluster_data['acquisti_mensili'], 
-                 cluster_data['spesa_media'], 
-                 c=colors[i], 
-                 label=cluster_desc[i]['nome'],
-                 alpha=0.6)
-    
-    # Centroidi
-    centroids = scaler.inverse_transform(kmeans.cluster_centers_)
-    ax.scatter(centroids[:, 0], centroids[:, 1], marker='X', s=200, c='black', label='Centroidi')
-    
-    # Nuovo cliente
-    ax.scatter(acquisti, spesa_media, marker='*', s=300, c='gold', edgecolor='black', label='Nuovo Cliente')
-    
-    ax.set_xlabel('Acquisti Mensili')
-    ax.set_ylabel('Spesa Media per Articolo (€)')
-    ax.set_title('Segmentazione Clienti Moda')
-    ax.legend()
-    ax.grid(True)
-    
-    st.pyplot(fig)
-
-# Informazioni tecniche
-with st.expander("ℹ️ Informazioni tecniche"):
-    st.write("""
-    **Parametri del modello:**
-    - Algoritmo: K-Means
-    - Numero cluster: 4
-    - Variabili: 
-      - Acquisti mensili (conteggio)
-      - Spesa media per articolo (€)
-    - Dati standardizzati prima del clustering
-    
-    **Statistiche descrittive:**
-    """)
-    st.write(data.describe())
+# Risultato finale
+st.success(f"✅ Il nuovo cliente è stato assegnato al **Cluster {cluster_nuovo_cliente + 1}**.")
