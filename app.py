@@ -5,7 +5,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 
-# --- 1. Generazione Dataset Sintetico per Negozio di Elettronica ---
+# --- 1. Generazione Dataset Sintetico per Negozio ---
 def generate_electronics_data(num_samples_per_group=75):
     """Generates a synthetic dataset for electronics store customer segmentation."""
     np.random.seed(42) # Per riproducibilità
@@ -55,9 +55,9 @@ def generate_electronics_data(num_samples_per_group=75):
     electronics_df = electronics_df.sample(frac=1, random_state=42).reset_index(drop=True) # Shuffle
     return electronics_df
 
-# --- 4. Etichette Significative per i Cluster (Negozio Elettronica) ---
+# --- 4. Etichette Significative per i Cluster  ---
 def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
-    """Assegna nomi significativi ai cluster per il negozio di elettronica."""
+    """Assegna nomi significativi ai cluster ."""
     assigned_names_map = {}
     
     profile_definitions = {
@@ -314,11 +314,11 @@ if simulated_profile_data_for_plot is not None: # Variabile rinominata
 
 ax_final.set_xlabel(x_axis_feat.replace("_", " "), fontsize=12)
 ax_final.set_ylabel(y_axis_feat.replace("_", " "), fontsize=12)
-ax_final.set_title("Segmentazione Clienti E-commerce Elettronica (Finale)", fontsize=14) # Titolo grafico finale può rimanere generico
+ax_final.set_title("Segmentazione Clienti E-commerce (Finale)", fontsize=14) # Titolo grafico finale può rimanere generico
 ax_final.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), fontsize=9) 
 ax_final.grid(True, linestyle='--', alpha=0.7)
 plt.tight_layout(rect=[0, 0, 0.85, 1]) 
 st.pyplot(fig_final)
 
 st.markdown("---")
-st.caption("Applicazione dimostrativa per la segmentazione clienti con K-Means in un e-commerce di elettronica.")
+st.caption("Applicazione dimostrativa per la segmentazione clienti con K-Means in un e-commerce.")
