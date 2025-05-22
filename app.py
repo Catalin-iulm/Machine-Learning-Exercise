@@ -121,7 +121,7 @@ def get_electronics_cluster_names(centroids_df, k_clusters, feature_cols_list):
 
 # --- Configurazione App Streamlit ---
 st.set_page_config(layout="wide")
-st.title("💻 Segmentazione Clienti E-commerce Elettronica con K-Means")
+st.title("💻 Segmentazione Clienti E-commerce K-Means")
 
 # --- Impostazioni Globali e Generazione Dati ---
 K_CLUSTERS = 4 
